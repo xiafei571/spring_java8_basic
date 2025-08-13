@@ -34,6 +34,35 @@ Run the application with arbitrary command line arguments (they will be logged b
 java -jar target/spring-cli-app-1.0.0.jar arg1 arg2 --foo=bar
 ```
 
+### Corporate Network / Proxy Configuration
+
+If you're running in a corporate network environment, you may need additional configuration:
+
+#### Option 1: Use System Proxy Settings
+```bash
+java -Dhttps.proxyHost=your.proxy.host -Dhttps.proxyPort=8080 -jar target/spring-cli-app-1.0.0.jar
+```
+
+#### Option 2: Configure JVM SSL Settings
+```bash
+java -Djavax.net.ssl.trustStore=/path/to/corporate/truststore.jks \
+     -Djavax.net.ssl.trustStorePassword=password \
+     -jar target/spring-cli-app-1.0.0.jar
+```
+
+#### Option 3: Disable SSL Verification (NOT RECOMMENDED for production)
+```bash
+java -Dcom.sun.net.ssl.checkRevocation=false \
+     -Dtrust_all_cert=true \
+     -jar target/spring-cli-app-1.0.0.jar
+```
+
+#### Option 4: Enable SSL Debug (for troubleshooting)
+```bash
+java -Djavax.net.debug=ssl:handshake:verbose \
+     -jar target/spring-cli-app-1.0.0.jar
+```
+
 ### Example Output
 
 ```

@@ -10,6 +10,8 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -31,13 +33,28 @@ public class App implements CommandLineRunner {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static OkHttpClient createHttpClient() {
-        // Use the default OkHttpClient which properly handles modern TLS and certificate validation
-        // OkHttp will automatically use the system's default SSL context and trust store
-        return new OkHttpClient.Builder()
-                .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .writeTimeout(30, TimeUnit.SECONDS)
-                .build();
+        OkHttpClient.Builder builder = new OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)  // Increased timeout for corporate networks
+                .readTimeout(60, TimeUnit.SECONDS)     // Increased timeout for corporate networks
+                .writeTimeout(60, TimeUnit.SECONDS)    // Increased timeout for corporate networks
+                .retryOnConnectionFailure(true);       // Retry on connection failures
+
+        // Check for system proxy settings (common in corporate environments)
+        String proxyHost = System.getProperty("https.proxyHost");
+        String proxyPort = System.getProperty("https.proxyPort");
+        
+        if (proxyHost != null && proxyPort != null) {
+            try {
+                Proxy proxy = new Proxy(Proxy.Type.HTTP, 
+                    new InetSocketAddress(proxyHost, Integer.parseInt(proxyPort)));
+                builder.proxy(proxy);
+                LoggerFactory.getLogger(App.class).info("Using proxy: {}:{}", proxyHost, proxyPort);
+            } catch (NumberFormatException e) {
+                LoggerFactory.getLogger(App.class).warn("Invalid proxy port: {}", proxyPort);
+            }
+        }
+
+        return builder.build();
     }
 
     public static void main(String[] args) {
