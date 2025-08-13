@@ -33,10 +33,13 @@ public class App implements CommandLineRunner {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static OkHttpClient createHttpClient() {
+        // Configure enterprise-friendly SSL settings
+        configureEnterpriseSSL();
+        
         OkHttpClient.Builder builder = new OkHttpClient.Builder()
-                .connectTimeout(30, TimeUnit.SECONDS)  // Increased timeout for corporate networks
-                .readTimeout(60, TimeUnit.SECONDS)     // Increased timeout for corporate networks
-                .writeTimeout(60, TimeUnit.SECONDS)    // Increased timeout for corporate networks
+                .connectTimeout(60, TimeUnit.SECONDS)  // Extended timeout for enterprise networks
+                .readTimeout(120, TimeUnit.SECONDS)    // Extended timeout for enterprise networks
+                .writeTimeout(120, TimeUnit.SECONDS)   // Extended timeout for enterprise networks
                 .retryOnConnectionFailure(true);       // Retry on connection failures
 
         // Check for system proxy settings (common in corporate environments)
@@ -55,6 +58,21 @@ public class App implements CommandLineRunner {
         }
 
         return builder.build();
+    }
+    
+    private static void configureEnterpriseSSL() {
+        // Enterprise network friendly SSL configuration
+        System.setProperty("java.net.useSystemProxies", "true");
+        System.setProperty("https.protocols", "TLSv1.2,TLSv1.1,TLSv1");
+        System.setProperty("jdk.tls.client.protocols", "TLSv1.2,TLSv1.1,TLSv1");
+        System.setProperty("com.sun.net.ssl.checkRevocation", "false");
+        System.setProperty("jdk.tls.useExtendedMasterSecret", "false");
+        
+        // Try to use Windows certificate store if available
+        String osName = System.getProperty("os.name", "").toLowerCase();
+        if (osName.contains("windows")) {
+            System.setProperty("javax.net.ssl.trustStoreType", "Windows-ROOT");
+        }
     }
 
     public static void main(String[] args) {
