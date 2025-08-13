@@ -26,13 +26,19 @@ public class App implements CommandLineRunner {
     @Value("${app.post.url}")
     private String postUrl;
 
-    private final OkHttpClient httpClient = new OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build();
+    private final OkHttpClient httpClient = createHttpClient();
     
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private static OkHttpClient createHttpClient() {
+        // Use the default OkHttpClient which properly handles modern TLS and certificate validation
+        // OkHttp will automatically use the system's default SSL context and trust store
+        return new OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(30, TimeUnit.SECONDS)
+                .build();
+    }
 
     public static void main(String[] args) {
         SpringApplication.run(App.class, args);
