@@ -26,17 +26,13 @@ public class App implements CommandLineRunner {
     @Value("${app.post.url}")
     private String postUrl;
 
-    private final OkHttpClient httpClient;
-    private final ObjectMapper objectMapper;
-
-    public App() {
-        this.httpClient = new OkHttpClient.Builder()
-                .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .writeTimeout(30, TimeUnit.SECONDS)
-                .build();
-        this.objectMapper = new ObjectMapper();
-    }
+    private final OkHttpClient httpClient = new OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build();
+    
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public static void main(String[] args) {
         SpringApplication.run(App.class, args);
