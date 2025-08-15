@@ -25,6 +25,7 @@ import javax.net.ssl.SSLContext;
 import java.security.KeyManagementException;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 
 @Component
 public class HttpClientFactory {
@@ -46,11 +47,13 @@ public class HttpClientFactory {
                 .setMaxConnTotal(100)
                 .setMaxConnPerRoute(20);
         
-        // Configure timeouts
+        // Configure timeouts and authentication schemes
         RequestConfig.Builder requestConfigBuilder = RequestConfig.custom()
                 .setConnectTimeout(60000)
                 .setSocketTimeout(120000)
-                .setConnectionRequestTimeout(60000);
+                .setConnectionRequestTimeout(60000)
+                .setTargetPreferredAuthSchemes(Arrays.asList(AuthSchemes.NTLM, AuthSchemes.BASIC))
+                .setProxyPreferredAuthSchemes(Arrays.asList(AuthSchemes.NTLM, AuthSchemes.BASIC));
         
         // Configure proxy if enabled
         if (proxyConfig.isProxyEnabled()) {
@@ -59,15 +62,11 @@ public class HttpClientFactory {
             requestConfigBuilder.setProxy(proxy);
             logger.info("Using HTTP proxy: {}:{}", proxyConfig.getHost(), proxyConfig.getPort());
             
-            // Configure proxy credentials if available - use simple basic auth like PowerShell
+            // Configure proxy credentials for NTLM/NEGOTIATE authentication
             if (proxyConfig.hasCredentials()) {
-                CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
-                credentialsProvider.setCredentials(
-                    new AuthScope(proxyConfig.getHost(), proxyConfig.getPortAsInt()),
-                    new UsernamePasswordCredentials(proxyConfig.getUsername(), proxyConfig.getPassword())
-                );
+                CredentialsProvider credentialsProvider = createCredentialsProvider();
                 builder.setDefaultCredentialsProvider(credentialsProvider);
-                logger.info("Proxy credentials configured for user: {} (basic auth)", proxyConfig.getUsername());
+                logger.info("Proxy credentials configured for user: {} (NTLM/NEGOTIATE)", proxyConfig.getUsername());
             }
         }
         
@@ -134,46 +133,69 @@ public class HttpClientFactory {
     }
     
     private CredentialsProvider createCredentialsProvider() {
-        // Try Windows integrated authentication first if domain is specified or on Windows
-        String osName = System.getProperty("os.name", "").toLowerCase();
-        boolean isWindows = osName.contains("windows");
+        BasicCredentialsProvider credentialsProvider = new BasicCredentialsProvider();
+        String username = proxyConfig.getUsername();
+        String password = proxyConfig.getPassword();
+        String domain = proxyConfig.getDomain();
         
-        if (isWindows && (proxyConfig.getDomain() != null || isWindowsIntegratedAuth())) {
+        // Extract domain from username if format is domain\username
+        if (domain == null && username.contains("\\")) {
+            String[] parts = username.split("\\\\", 2);
+            domain = parts[0];
+            username = parts[1];
+            logger.info("Extracted domain '{}' from username", domain);
+        }
+        
+        AuthScope proxyAuthScope = new AuthScope(proxyConfig.getHost(), proxyConfig.getPortAsInt());
+        
+        // Always try NTLM first for corporate proxies
+        if (domain != null && !domain.trim().isEmpty()) {
             try {
-                // Use Windows credentials provider for NTLM/Negotiate
-                WindowsCredentialsProvider winCredProvider = new WindowsCredentialsProvider(
-                    new BasicCredentialsProvider()
+                NTCredentials ntCredentials = new NTCredentials(
+                    username,
+                    password,
+                    getWorkstation(),
+                    domain
                 );
-                
-                // Add NTLM credentials if domain is specified
-                if (proxyConfig.getDomain() != null) {
-                    NTCredentials ntCredentials = new NTCredentials(
-                        proxyConfig.getUsername(),
-                        proxyConfig.getPassword(),
-                        getWorkstation(),
-                        proxyConfig.getDomain()
-                    );
-                    winCredProvider.setCredentials(
-                        new AuthScope(proxyConfig.getHost(), proxyConfig.getPortAsInt()),
-                        ntCredentials
-                    );
-                }
-                
-                logger.info("Using Windows integrated authentication");
-                return winCredProvider;
+                credentialsProvider.setCredentials(proxyAuthScope, ntCredentials);
+                logger.info("Using NTLM authentication: domain={}, user={}, workstation={}", 
+                           domain, username, getWorkstation());
+                return credentialsProvider;
             } catch (Exception e) {
-                logger.warn("Failed to configure Windows authentication, falling back to basic: {}", e.getMessage());
+                logger.warn("Failed to create NTLM credentials: {}", e.getMessage());
+            }
+        }
+        
+        // Try to guess domain for corporate environments
+        if (domain == null) {
+            // Common corporate domain patterns
+            String[] commonDomains = {"CORP", "AD", "DOMAIN", "WIN"};
+            for (String testDomain : commonDomains) {
+                try {
+                    NTCredentials ntCredentials = new NTCredentials(
+                        username,
+                        password,
+                        getWorkstation(),
+                        testDomain
+                    );
+                    credentialsProvider.setCredentials(proxyAuthScope, ntCredentials);
+                    logger.info("Using NTLM with guessed domain: {}", testDomain);
+                    return credentialsProvider;
+                } catch (Exception e) {
+                    // Continue to next domain
+                }
             }
         }
         
         // Fallback to basic authentication
-        BasicCredentialsProvider basicProvider = new BasicCredentialsProvider();
-        basicProvider.setCredentials(
-            new AuthScope(proxyConfig.getHost(), proxyConfig.getPortAsInt()),
-            new UsernamePasswordCredentials(proxyConfig.getUsername(), proxyConfig.getPassword())
+        UsernamePasswordCredentials basicCredentials = new UsernamePasswordCredentials(
+            proxyConfig.getUsername(), 
+            proxyConfig.getPassword()
         );
-        logger.info("Using basic authentication");
-        return basicProvider;
+        credentialsProvider.setCredentials(proxyAuthScope, basicCredentials);
+        logger.info("Using basic authentication fallback for user: {}", proxyConfig.getUsername());
+        
+        return credentialsProvider;
     }
     
     private boolean isWindowsIntegratedAuth() {
