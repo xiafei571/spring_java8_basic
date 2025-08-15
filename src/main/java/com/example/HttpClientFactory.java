@@ -22,10 +22,24 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import javax.net.ssl.SSLContext;
+import java.io.IOException;
 import java.security.KeyManagementException;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
+
+import org.apache.http.HttpException;
+import org.apache.http.HttpHost;
+import org.apache.http.HttpRequest;
+import org.apache.http.HttpRequestInterceptor;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.AuthState;
+import org.apache.http.auth.Credentials;
+import org.apache.http.client.CredentialsProvider;
+import org.apache.http.client.protocol.HttpClientContext;
+import org.apache.http.impl.auth.BasicScheme;
+import org.apache.http.protocol.HttpContext;
+import org.apache.http.protocol.HttpCoreContext;
 
 @Component
 public class HttpClientFactory {
@@ -46,6 +60,9 @@ public class HttpClientFactory {
         HttpClientBuilder builder = HttpClientBuilder.create()
                 .setMaxConnTotal(100)
                 .setMaxConnPerRoute(20);
+        
+        // Enable preemptive authentication to avoid 407 challenge
+        builder.addInterceptorFirst(new PreemptiveAuthInterceptor());
         
         // Configure timeouts and authentication schemes
         RequestConfig.Builder requestConfigBuilder = RequestConfig.custom()
@@ -207,5 +224,28 @@ public class HttpClientFactory {
         }
         
         LoggerFactory.getLogger(HttpClientFactory.class).info("Enterprise SSL configured for OS: {}", osName);
+    }
+    
+    /**
+     * Preemptive authentication interceptor to avoid 407 challenges
+     * This sends credentials proactively like PowerShell does
+     */
+    private static class PreemptiveAuthInterceptor implements HttpRequestInterceptor {
+        @Override
+        public void process(HttpRequest request, HttpContext context) throws HttpException, IOException {
+            AuthState proxyAuthState = (AuthState) context.getAttribute(HttpClientContext.PROXY_AUTH_STATE);
+            
+            if (proxyAuthState != null && proxyAuthState.getAuthScheme() == null) {
+                CredentialsProvider credentialsProvider = (CredentialsProvider) context.getAttribute(HttpClientContext.CREDS_PROVIDER);
+                HttpHost proxy = (HttpHost) context.getAttribute(HttpCoreContext.HTTP_TARGET_HOST);
+                
+                if (credentialsProvider != null && proxy != null) {
+                    Credentials credentials = credentialsProvider.getCredentials(new AuthScope(proxy));
+                    if (credentials != null) {
+                        proxyAuthState.update(new BasicScheme(), credentials);
+                    }
+                }
+            }
+        }
     }
 }

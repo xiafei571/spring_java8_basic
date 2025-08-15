@@ -18,6 +18,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.util.Base64;
 import java.io.InputStreamReader;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -97,6 +98,11 @@ public class App implements CommandLineRunner {
         // Use PowerShell-compatible headers only
         request.setHeader("User-Agent", "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.19041.4648");
         
+        // Add preemptive proxy authentication to avoid 407
+        if (proxyConfig.hasCredentials()) {
+            addProxyAuthHeader(request);
+        }
+        
         try {
             HttpResponse response = httpClient.execute(request);
             int statusCode = response.getStatusLine().getStatusCode();
@@ -124,6 +130,11 @@ public class App implements CommandLineRunner {
         // Use PowerShell-compatible headers only
         request.setHeader("User-Agent", "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.19041.4648");
         request.setHeader("Content-Type", "application/json");
+        
+        // Add preemptive proxy authentication to avoid 407
+        if (proxyConfig.hasCredentials()) {
+            addProxyAuthHeader(request);
+        }
         
         try {
             HttpResponse response = httpClient.execute(request);
@@ -224,6 +235,19 @@ public class App implements CommandLineRunner {
             process.waitFor();
         } catch (Exception e) {
             logger.warn("Alternative DNS resolution failed: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Add preemptive proxy authorization header to avoid 407 challenge
+     * This mimics PowerShell's ProxyCredential behavior
+     */
+    private void addProxyAuthHeader(org.apache.http.HttpMessage request) {
+        if (proxyConfig.hasCredentials()) {
+            String credentials = proxyConfig.getUsername() + ":" + proxyConfig.getPassword();
+            String encoded = Base64.getEncoder().encodeToString(credentials.getBytes());
+            request.setHeader("Proxy-Authorization", "Basic " + encoded);
+            logger.info("Added preemptive proxy authentication header for user: {}", proxyConfig.getUsername());
         }
     }
 }
