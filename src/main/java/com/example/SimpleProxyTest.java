@@ -53,8 +53,13 @@ public class SimpleProxyTest implements CommandLineRunner {
     }
     
     private void testDirectConnection() throws Exception {
+        // Explicitly disable SOCKS proxy to force HTTP proxy
+        System.setProperty("socksProxyHost", "");
+        System.setProperty("socksProxyPort", "");
+        System.setProperty("java.net.useSystemProxies", "false");
+        
         // Create simple HTTP client with proxy
-        HttpHost proxy = new HttpHost(proxyConfig.getHost(), proxyConfig.getPortAsInt());
+        HttpHost proxy = new HttpHost(proxyConfig.getHost(), proxyConfig.getPortAsInt(), "http");
         
         CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
         if (proxyConfig.hasCredentials()) {

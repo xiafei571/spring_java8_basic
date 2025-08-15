@@ -93,37 +93,44 @@ public class HttpClientFactory {
     }
     
     private void configureSystemProxyProperties() {
-        // Disable system proxy detection to avoid SOCKS confusion
+        // CRITICAL: Force disable ALL system proxy detection
         System.setProperty("java.net.useSystemProxies", "false");
+        
+        // CRITICAL: Complete SOCKS proxy elimination
+        System.clearProperty("socksProxyHost");
+        System.clearProperty("socksProxyPort");
+        System.clearProperty("socksProxyVersion");
+        System.clearProperty("socksNonProxyHosts");
+        
+        System.setProperty("socksProxyHost", "");
+        System.setProperty("socksProxyPort", "");
+        System.setProperty("socksProxyVersion", "");
+        System.setProperty("socksNonProxyHosts", "");
+        
+        // Force disable automatic proxy detection on Windows
+        System.setProperty("java.net.useSystemProxies", "false");
+        System.setProperty("com.sun.net.useExclusiveBind", "false");
+        
+        // Network configuration
         System.setProperty("networkaddress.cache.ttl", "0");
         System.setProperty("networkaddress.cache.negative.ttl", "0");
         System.setProperty("java.net.preferIPv4Stack", "true");
         System.setProperty("java.net.preferIPv6Addresses", "false");
         
-        // Additional settings to match PowerShell behavior
-        System.setProperty("sun.net.spi.nameservice.nameservers", "");
-        System.setProperty("sun.net.spi.nameservice.provider.1", "dns,sun");
-        
-        // Explicitly disable SOCKS proxy to avoid protocol confusion
-        System.setProperty("socksProxyHost", "");
-        System.setProperty("socksProxyPort", "");
-        System.setProperty("socksProxyVersion", "");
-        
-        // Set HTTP proxy properties (not SOCKS)
+        // Set ONLY HTTP proxy properties (explicitly not SOCKS)
         System.setProperty("http.proxyHost", proxyConfig.getHost());
         System.setProperty("http.proxyPort", proxyConfig.getPort());
         System.setProperty("https.proxyHost", proxyConfig.getHost());
         System.setProperty("https.proxyPort", proxyConfig.getPort());
         
         if (proxyConfig.hasCredentials()) {
-            // Set proxy authentication
             System.setProperty("http.proxyUser", proxyConfig.getUsername());
             System.setProperty("http.proxyPassword", proxyConfig.getPassword());
             System.setProperty("https.proxyUser", proxyConfig.getUsername());
             System.setProperty("https.proxyPassword", proxyConfig.getPassword());
         }
         
-        logger.info("HTTP proxy properties configured (system proxies disabled): {}:{}", proxyConfig.getHost(), proxyConfig.getPort());
+        logger.info("HTTP proxy properties configured (SOCKS disabled): {}:{}", proxyConfig.getHost(), proxyConfig.getPort());
     }
     
     private CredentialsProvider createCredentialsProvider() {
@@ -185,15 +192,10 @@ public class HttpClientFactory {
     }
     
     private static void configureEnterpriseSSL() {
-        System.setProperty("java.net.useSystemProxies", "true");
         System.setProperty("https.protocols", "TLSv1.2,TLSv1.1,TLSv1");
         System.setProperty("jdk.tls.client.protocols", "TLSv1.2,TLSv1.1,TLSv1");
         System.setProperty("com.sun.net.ssl.checkRevocation", "false");
         System.setProperty("jdk.tls.useExtendedMasterSecret", "false");
-        
-        // Enable debug logging for proxy and SSL
-        System.setProperty("java.net.debug", "all");
-        System.setProperty("javax.net.debug", "ssl,handshake");
         
         String osName = System.getProperty("os.name", "").toLowerCase();
         if (osName.contains("windows")) {

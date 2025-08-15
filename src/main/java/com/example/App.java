@@ -45,6 +45,14 @@ public class App implements CommandLineRunner {
     private ProxyConfig proxyConfig;
 
     public static void main(String[] args) {
+        // CRITICAL: Disable SOCKS before ANYTHING else
+        System.setProperty("java.net.useSystemProxies", "false");
+        System.clearProperty("socksProxyHost");
+        System.clearProperty("socksProxyPort");
+        System.clearProperty("socksProxyVersion");
+        System.setProperty("socksProxyHost", "");
+        System.setProperty("socksProxyPort", "");
+        
         SpringApplication.run(App.class, args);
     }
 
@@ -143,21 +151,30 @@ public class App implements CommandLineRunner {
     }
     
     private void configureDNS() {
-        // Disable system proxy detection to avoid SOCKS confusion
+        // CRITICAL: Completely disable ALL system proxy detection
         System.setProperty("java.net.useSystemProxies", "false");
+        
+        // CRITICAL: Explicitly clear ALL SOCKS proxy settings
+        System.clearProperty("socksProxyHost");
+        System.clearProperty("socksProxyPort");
+        System.clearProperty("socksProxyVersion");
+        System.clearProperty("socksNonProxyHosts");
+        
+        // Additional SOCKS cleanup
+        System.setProperty("socksProxyHost", "");
+        System.setProperty("socksProxyPort", "");
+        System.setProperty("socksProxyVersion", "");
+        System.setProperty("socksNonProxyHosts", "");
+        
+        // Network settings
         System.setProperty("networkaddress.cache.ttl", "0");
         System.setProperty("networkaddress.cache.negative.ttl", "0");
         System.setProperty("java.net.preferIPv4Stack", "true");
         System.setProperty("java.net.preferIPv6Addresses", "false");
         
-        // Additional settings to match PowerShell behavior
+        // DNS settings
         System.setProperty("sun.net.spi.nameservice.nameservers", "");
         System.setProperty("sun.net.spi.nameservice.provider.1", "dns,sun");
-        
-        // Explicitly disable SOCKS proxy to avoid protocol confusion
-        System.setProperty("socksProxyHost", "");
-        System.setProperty("socksProxyPort", "");
-        System.setProperty("socksProxyVersion", "");
         
         logger.info("Java network configuration set (system proxies disabled)");
         
