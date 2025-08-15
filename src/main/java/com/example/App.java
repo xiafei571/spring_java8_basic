@@ -100,13 +100,7 @@ public class App implements CommandLineRunner {
         
         HttpGet request = new HttpGet(getUrl);
         
-        // Use PowerShell-compatible headers only
-        request.setHeader("User-Agent", "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.19041.4648");
-        
-        // Add preemptive proxy authentication to avoid 407
-        if (proxyConfig.hasCredentials()) {
-            addProxyAuthHeader(request);
-        }
+        // Let HttpClient handle everything automatically - no custom headers
         
         try {
             // Debug: log all request headers
@@ -142,14 +136,7 @@ public class App implements CommandLineRunner {
         entity.setContentType("application/json");
         request.setEntity(entity);
         
-        // Use PowerShell-compatible headers only
-        request.setHeader("User-Agent", "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.19041.4648");
-        request.setHeader("Content-Type", "application/json");
-        
-        // Add preemptive proxy authentication to avoid 407
-        if (proxyConfig.hasCredentials()) {
-            addProxyAuthHeader(request);
-        }
+        // Let HttpClient handle headers automatically
         
         try {
             HttpResponse response = httpClient.execute(request);

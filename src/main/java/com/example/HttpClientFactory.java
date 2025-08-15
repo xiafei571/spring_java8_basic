@@ -61,9 +61,8 @@ public class HttpClientFactory {
                 .setMaxConnTotal(100)
                 .setMaxConnPerRoute(20);
         
-        // Disable automatic authentication - we'll handle it manually
-        builder.disableAuthCaching()
-               .disableAutomaticRetries();
+        // Let HttpClient handle authentication automatically
+        // builder.disableAuthCaching().disableAutomaticRetries();
         
         // Configure timeouts only - manual auth via headers
         RequestConfig.Builder requestConfigBuilder = RequestConfig.custom()
@@ -78,8 +77,16 @@ public class HttpClientFactory {
             requestConfigBuilder.setProxy(proxy);
             logger.info("Using HTTP proxy: {}:{}", proxyConfig.getHost(), proxyConfig.getPort());
             
-            // Skip automatic credentials - we use manual Proxy-Authorization header
-            logger.info("Proxy configured: {}:{} (manual auth)", proxyConfig.getHost(), proxyConfig.getPort());
+            // Configure automatic credentials like PowerShell
+            if (proxyConfig.hasCredentials()) {
+                CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
+                credentialsProvider.setCredentials(
+                    new AuthScope(proxyConfig.getHost(), proxyConfig.getPortAsInt()),
+                    new UsernamePasswordCredentials(proxyConfig.getUsername(), proxyConfig.getPassword())
+                );
+                builder.setDefaultCredentialsProvider(credentialsProvider);
+                logger.info("Automatic proxy credentials configured for user: {}", proxyConfig.getUsername());
+            }
         }
         
         builder.setDefaultRequestConfig(requestConfigBuilder.build());
