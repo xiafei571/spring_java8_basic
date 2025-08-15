@@ -157,26 +157,70 @@ public class App implements CommandLineRunner {
     private void performPostRequest(CloseableHttpClient httpClient) throws IOException {
         logger.info("Performing POST request to: {}", postUrl);
         
-        // Create JSON payload
+        // Use raw HTTP connection for POST too
         Map<String, String> payload = new HashMap<>();
         payload.put("ping", "hello-from-cli");
         String jsonPayload = objectMapper.writeValueAsString(payload);
         
-        HttpPost request = new HttpPost(postUrl);
-        StringEntity entity = new StringEntity(jsonPayload);
-        entity.setContentType("application/json");
-        request.setEntity(entity);
-        
-        // Let HttpClient handle headers automatically
-        
+        performRawHttpPostRequest(postUrl, jsonPayload);
+    }
+    
+    private void performRawHttpPostRequest(String urlString, String jsonPayload) throws IOException {
         try {
-            HttpResponse response = httpClient.execute(request);
-            int statusCode = response.getStatusLine().getStatusCode();
-            String responseBody = EntityUtils.toString(response.getEntity());
+            // Create Basic auth header
+            String credentials = proxyConfig.getUsername() + ":" + proxyConfig.getPassword();
+            String authHeaderValue = "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes());
             
-            logger.info("POST Response - Status: {}, Body: {}", statusCode, responseBody);
-        } finally {
-            request.releaseConnection();
+            // Create proxy
+            Proxy proxy = new Proxy(Proxy.Type.HTTP, 
+                new InetSocketAddress(proxyConfig.getHost(), proxyConfig.getPortAsInt()));
+            
+            // Create connection
+            URL url = new URL(urlString);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection(proxy);
+            
+            // Set headers for POST
+            connection.setRequestMethod("POST");
+            connection.setRequestProperty("User-Agent", "Java-PowerShell-Compatible/1.0");
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("Content-Type", "application/json");
+            connection.setRequestProperty("Proxy-Authorization", authHeaderValue);
+            connection.setDoOutput(true);
+            
+            // Set timeouts
+            connection.setConnectTimeout(60000);
+            connection.setReadTimeout(60000);
+            
+            // Write request body
+            connection.getOutputStream().write(jsonPayload.getBytes("UTF-8"));
+            connection.getOutputStream().flush();
+            connection.getOutputStream().close();
+            
+            // Get response
+            int responseCode = connection.getResponseCode();
+            String responseMessage = connection.getResponseMessage();
+            
+            logger.info("Raw HTTP POST Response - Code: {}, Message: {}", responseCode, responseMessage);
+            
+            // Read response
+            BufferedReader reader;
+            if (responseCode >= 200 && responseCode < 300) {
+                reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            } else {
+                reader = new BufferedReader(new InputStreamReader(connection.getErrorStream()));
+            }
+            
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                response.append(line).append("\n");
+            }
+            reader.close();
+            
+            logger.info("Raw HTTP POST Response Body: {}", response.toString());
+            
+        } catch (Exception e) {
+            logger.error("Raw HTTP POST request failed: {}", e.getMessage(), e);
         }
     }
     
