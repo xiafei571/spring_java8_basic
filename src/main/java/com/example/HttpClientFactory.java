@@ -37,18 +37,9 @@ public class HttpClientFactory {
     public CloseableHttpClient createHttpClient() {
         configureEnterpriseSSL();
         
-        // Try to use Windows HTTP client if available and on Windows
-        String osName = System.getProperty("os.name", "").toLowerCase();
-        if (osName.contains("windows") && proxyConfig.isProxyEnabled() && 
-            (proxyConfig.getDomain() != null || isWindowsIntegratedAuth())) {
-            try {
-                // Use WinHttpClients for better Windows integration
-                CloseableHttpClient winClient = WinHttpClients.createDefault();
-                logger.info("Using Windows HTTP client with integrated authentication");
-                return winClient;
-            } catch (Exception e) {
-                logger.warn("Failed to create Windows HTTP client, using standard client: {}", e.getMessage());
-            }
+        // Set system properties for proxy (similar to PowerShell approach)
+        if (proxyConfig.isProxyEnabled()) {
+            configureSystemProxyProperties();
         }
         
         HttpClientBuilder builder = HttpClientBuilder.create()
@@ -67,11 +58,15 @@ public class HttpClientFactory {
             requestConfigBuilder.setProxy(proxy);
             logger.info("Using proxy: {}:{}", proxyConfig.getHost(), proxyConfig.getPort());
             
-            // Configure proxy credentials if available
+            // Configure proxy credentials if available - use simple basic auth like PowerShell
             if (proxyConfig.hasCredentials()) {
-                CredentialsProvider credentialsProvider = createCredentialsProvider();
+                CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
+                credentialsProvider.setCredentials(
+                    new AuthScope(proxyConfig.getHost(), proxyConfig.getPortAsInt()),
+                    new UsernamePasswordCredentials(proxyConfig.getUsername(), proxyConfig.getPassword())
+                );
                 builder.setDefaultCredentialsProvider(credentialsProvider);
-                logger.info("Proxy credentials configured for user: {}", proxyConfig.getUsername());
+                logger.info("Proxy credentials configured for user: {} (basic auth)", proxyConfig.getUsername());
             }
         }
         
@@ -94,6 +89,24 @@ public class HttpClientFactory {
         }
         
         return builder.build();
+    }
+    
+    private void configureSystemProxyProperties() {
+        // Set system properties similar to PowerShell proxy approach
+        System.setProperty("http.proxyHost", proxyConfig.getHost());
+        System.setProperty("http.proxyPort", proxyConfig.getPort());
+        System.setProperty("https.proxyHost", proxyConfig.getHost());
+        System.setProperty("https.proxyPort", proxyConfig.getPort());
+        
+        if (proxyConfig.hasCredentials()) {
+            // Set proxy authentication
+            System.setProperty("http.proxyUser", proxyConfig.getUsername());
+            System.setProperty("http.proxyPassword", proxyConfig.getPassword());
+            System.setProperty("https.proxyUser", proxyConfig.getUsername());
+            System.setProperty("https.proxyPassword", proxyConfig.getPassword());
+        }
+        
+        logger.info("System proxy properties configured: {}:{}", proxyConfig.getHost(), proxyConfig.getPort());
     }
     
     private CredentialsProvider createCredentialsProvider() {
@@ -161,9 +174,15 @@ public class HttpClientFactory {
         System.setProperty("com.sun.net.ssl.checkRevocation", "false");
         System.setProperty("jdk.tls.useExtendedMasterSecret", "false");
         
+        // Enable debug logging for proxy and SSL
+        System.setProperty("java.net.debug", "all");
+        System.setProperty("javax.net.debug", "ssl,handshake");
+        
         String osName = System.getProperty("os.name", "").toLowerCase();
         if (osName.contains("windows")) {
             System.setProperty("javax.net.ssl.trustStoreType", "Windows-ROOT");
         }
+        
+        LoggerFactory.getLogger(HttpClientFactory.class).info("Enterprise SSL configured for OS: {}", osName);
     }
 }
