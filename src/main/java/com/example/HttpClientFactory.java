@@ -92,6 +92,17 @@ public class HttpClientFactory {
     }
     
     private void configureSystemProxyProperties() {
+        // Force Java to use system network stack like PowerShell
+        System.setProperty("java.net.useSystemProxies", "true");
+        System.setProperty("networkaddress.cache.ttl", "0");
+        System.setProperty("networkaddress.cache.negative.ttl", "0");
+        System.setProperty("java.net.preferIPv4Stack", "true");
+        System.setProperty("java.net.preferIPv6Addresses", "false");
+        
+        // Additional settings to match PowerShell behavior
+        System.setProperty("sun.net.spi.nameservice.nameservers", "");
+        System.setProperty("sun.net.spi.nameservice.provider.1", "dns,sun");
+        
         // Set system properties similar to PowerShell proxy approach
         System.setProperty("http.proxyHost", proxyConfig.getHost());
         System.setProperty("http.proxyPort", proxyConfig.getPort());
@@ -106,7 +117,7 @@ public class HttpClientFactory {
             System.setProperty("https.proxyPassword", proxyConfig.getPassword());
         }
         
-        logger.info("System proxy properties configured: {}:{}", proxyConfig.getHost(), proxyConfig.getPort());
+        logger.info("System proxy properties configured to match PowerShell behavior: {}:{}", proxyConfig.getHost(), proxyConfig.getPort());
     }
     
     private CredentialsProvider createCredentialsProvider() {

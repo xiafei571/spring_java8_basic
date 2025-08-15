@@ -16,7 +16,11 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -50,6 +54,9 @@ public class App implements CommandLineRunner {
         
         // Parse command line arguments for proxy settings
         parseProxyArguments(args);
+        
+        // Configure DNS settings to resolve proxy hostname
+        configureDNS();
         
         // Log all command line arguments
         logger.info("Command line arguments: {}", Arrays.toString(args));
@@ -124,6 +131,59 @@ public class App implements CommandLineRunner {
             } else if ("-proxyDomain".equals(args[i]) && i + 1 < args.length) {
                 proxyConfig.setDomain(args[i + 1]);
             }
+        }
+    }
+    
+    private void configureDNS() {
+        // Force Java to use system network stack like PowerShell
+        System.setProperty("java.net.useSystemProxies", "true");
+        System.setProperty("networkaddress.cache.ttl", "0");
+        System.setProperty("networkaddress.cache.negative.ttl", "0");
+        System.setProperty("java.net.preferIPv4Stack", "true");
+        System.setProperty("java.net.preferIPv6Addresses", "false");
+        
+        // Additional settings to match PowerShell behavior
+        System.setProperty("sun.net.spi.nameservice.nameservers", "");
+        System.setProperty("sun.net.spi.nameservice.provider.1", "dns,sun");
+        
+        logger.info("Java network configuration set to use system stack (like PowerShell)");
+        
+        // If proxy is configured, try to resolve the hostname first
+        if (proxyConfig.isProxyEnabled()) {
+            try {
+                InetAddress addr = InetAddress.getByName(proxyConfig.getHost());
+                logger.info("Successfully resolved proxy hostname: {} -> {}", 
+                           proxyConfig.getHost(), addr.getHostAddress());
+            } catch (UnknownHostException e) {
+                logger.warn("Failed to resolve proxy hostname: {}. Error: {}", 
+                           proxyConfig.getHost(), e.getMessage());
+                logger.info("Trying alternative DNS resolution methods...");
+                
+                // Try alternative resolution methods
+                tryAlternativeDNSResolution(proxyConfig.getHost());
+            }
+        }
+    }
+    
+    private void tryAlternativeDNSResolution(String hostname) {
+        try {
+            // Try using system DNS directly
+            Process process = Runtime.getRuntime().exec("nslookup " + hostname);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.contains("Address:") && !line.contains("#53")) {
+                    String ipAddress = line.split("Address:")[1].trim();
+                    logger.info("System nslookup found IP: {} -> {}", hostname, ipAddress);
+                    logger.info("Consider using this IP address instead of hostname");
+                    break;
+                }
+            }
+            
+            process.waitFor();
+        } catch (Exception e) {
+            logger.warn("Alternative DNS resolution failed: {}", e.getMessage());
         }
     }
 }
