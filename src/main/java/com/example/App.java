@@ -53,11 +53,8 @@ public class App implements CommandLineRunner {
         System.setProperty("socksProxyHost", "");
         System.setProperty("socksProxyPort", "");
         
-        // Enable Windows integrated authentication (like PSCredential)
-        System.setProperty("java.security.auth.login.config", "");
-        System.setProperty("java.security.krb5.conf", "");
-        System.setProperty("sun.security.krb5.debug", "false");
-        System.setProperty("javax.security.auth.useSubjectCredsOnly", "false");
+        // Configure for Basic authentication (like PowerShell ProxyCredential)
+        System.setProperty("sun.net.http.allowRestrictedHeaders", "true");
         
         SpringApplication.run(App.class, args);
     }
