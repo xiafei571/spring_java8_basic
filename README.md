@@ -32,6 +32,9 @@ Run the application with arbitrary command line arguments (they will be logged b
 
 ```bash
 java -jar target/spring-cli-app-1.0.0.jar arg1 arg2 --foo=bar
+# or 
+java -jar target/spring-cli-app-1.0.0.jar -proxyHost demo-proxy.net -proxyPort 8085 -proxyUser your_username -proxyPassword your_password
+
 ```
 
 ### Corporate Network / Proxy Configuration
