@@ -45,6 +45,13 @@
             <artifactId>httpclient</artifactId>
             <version>4.5.14</version>
         </dependency>
+        
+        <!-- Apache HttpComponents Windows NTLM support -->
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpclient-win</artifactId>
+            <version>4.5.14</version>
+        </dependency>
 
         <!-- Jackson for JSON processing -->
         <dependency>

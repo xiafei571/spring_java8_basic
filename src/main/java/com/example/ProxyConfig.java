@@ -15,6 +15,7 @@ public class ProxyConfig {
     private String port;
     private String username;
     private String password;
+    private String domain;
 
     public ProxyConfig() {
         loadFromFile();
@@ -28,6 +29,7 @@ public class ProxyConfig {
             this.port = props.getProperty("proxy.port");
             this.username = props.getProperty("proxy.username");
             this.password = props.getProperty("proxy.password");
+            this.domain = props.getProperty("proxy.domain");
         } catch (IOException e) {
             // File doesn't exist or can't be read, use default values
         }
@@ -73,6 +75,14 @@ public class ProxyConfig {
     public boolean hasCredentials() {
         return username != null && !username.trim().isEmpty() &&
                password != null && !password.trim().isEmpty();
+    }
+
+    public String getDomain() {
+        return domain;
+    }
+
+    public void setDomain(String domain) {
+        this.domain = domain;
     }
 
     public int getPortAsInt() {

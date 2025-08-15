@@ -121,6 +121,8 @@ public class App implements CommandLineRunner {
                 proxyConfig.setUsername(args[i + 1]);
             } else if ("-proxyPassword".equals(args[i]) && i + 1 < args.length) {
                 proxyConfig.setPassword(args[i + 1]);
+            } else if ("-proxyDomain".equals(args[i]) && i + 1 < args.length) {
+                proxyConfig.setDomain(args[i + 1]);
             }
         }
     }

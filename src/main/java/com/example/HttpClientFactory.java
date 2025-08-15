@@ -2,15 +2,19 @@ package com.example;
 
 import org.apache.http.HttpHost;
 import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.NTCredentials;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.CredentialsProvider;
+import org.apache.http.client.config.AuthSchemes;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.conn.ssl.NoopHostnameVerifier;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
+import org.apache.http.impl.auth.win.WindowsCredentialsProvider;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.impl.client.WinHttpClients;
 import org.apache.http.ssl.SSLContextBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +37,20 @@ public class HttpClientFactory {
     public CloseableHttpClient createHttpClient() {
         configureEnterpriseSSL();
         
+        // Try to use Windows HTTP client if available and on Windows
+        String osName = System.getProperty("os.name", "").toLowerCase();
+        if (osName.contains("windows") && proxyConfig.isProxyEnabled() && 
+            (proxyConfig.getDomain() != null || isWindowsIntegratedAuth())) {
+            try {
+                // Use WinHttpClients for better Windows integration
+                CloseableHttpClient winClient = WinHttpClients.createDefault();
+                logger.info("Using Windows HTTP client with integrated authentication");
+                return winClient;
+            } catch (Exception e) {
+                logger.warn("Failed to create Windows HTTP client, using standard client: {}", e.getMessage());
+            }
+        }
+        
         HttpClientBuilder builder = HttpClientBuilder.create()
                 .setMaxConnTotal(100)
                 .setMaxConnPerRoute(20);
@@ -51,11 +69,7 @@ public class HttpClientFactory {
             
             // Configure proxy credentials if available
             if (proxyConfig.hasCredentials()) {
-                CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
-                credentialsProvider.setCredentials(
-                    new AuthScope(proxyConfig.getHost(), proxyConfig.getPortAsInt()),
-                    new UsernamePasswordCredentials(proxyConfig.getUsername(), proxyConfig.getPassword())
-                );
+                CredentialsProvider credentialsProvider = createCredentialsProvider();
                 builder.setDefaultCredentialsProvider(credentialsProvider);
                 logger.info("Proxy credentials configured for user: {}", proxyConfig.getUsername());
             }
@@ -80,6 +94,64 @@ public class HttpClientFactory {
         }
         
         return builder.build();
+    }
+    
+    private CredentialsProvider createCredentialsProvider() {
+        // Try Windows integrated authentication first if domain is specified or on Windows
+        String osName = System.getProperty("os.name", "").toLowerCase();
+        boolean isWindows = osName.contains("windows");
+        
+        if (isWindows && (proxyConfig.getDomain() != null || isWindowsIntegratedAuth())) {
+            try {
+                // Use Windows credentials provider for NTLM/Negotiate
+                WindowsCredentialsProvider winCredProvider = new WindowsCredentialsProvider(
+                    new BasicCredentialsProvider()
+                );
+                
+                // Add NTLM credentials if domain is specified
+                if (proxyConfig.getDomain() != null) {
+                    NTCredentials ntCredentials = new NTCredentials(
+                        proxyConfig.getUsername(),
+                        proxyConfig.getPassword(),
+                        getWorkstation(),
+                        proxyConfig.getDomain()
+                    );
+                    winCredProvider.setCredentials(
+                        new AuthScope(proxyConfig.getHost(), proxyConfig.getPortAsInt()),
+                        ntCredentials
+                    );
+                }
+                
+                logger.info("Using Windows integrated authentication");
+                return winCredProvider;
+            } catch (Exception e) {
+                logger.warn("Failed to configure Windows authentication, falling back to basic: {}", e.getMessage());
+            }
+        }
+        
+        // Fallback to basic authentication
+        BasicCredentialsProvider basicProvider = new BasicCredentialsProvider();
+        basicProvider.setCredentials(
+            new AuthScope(proxyConfig.getHost(), proxyConfig.getPortAsInt()),
+            new UsernamePasswordCredentials(proxyConfig.getUsername(), proxyConfig.getPassword())
+        );
+        logger.info("Using basic authentication");
+        return basicProvider;
+    }
+    
+    private boolean isWindowsIntegratedAuth() {
+        // Check if we should use Windows integrated authentication
+        // This could be based on missing username/password or explicit configuration
+        return proxyConfig.getUsername() == null || proxyConfig.getUsername().trim().isEmpty();
+    }
+    
+    private String getWorkstation() {
+        // Get workstation name for NTLM
+        String workstation = System.getenv("COMPUTERNAME");
+        if (workstation == null || workstation.trim().isEmpty()) {
+            workstation = "localhost";
+        }
+        return workstation;
     }
     
     private static void configureEnterpriseSSL() {

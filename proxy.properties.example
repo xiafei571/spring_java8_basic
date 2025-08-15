@@ -6,5 +6,13 @@ proxy.host=demo-proxy.net
 proxy.port=8085
 
 # Proxy authentication (if required)
+# For basic authentication:
 proxy.username=your_username
 proxy.password=your_password
+
+# For Windows NTLM/Negotiate authentication (企业域认证):
+# proxy.domain=your_domain
+# proxy.username=domain_username
+# proxy.password=domain_password
+
+# Note: Leave username/password empty to use Windows integrated authentication
