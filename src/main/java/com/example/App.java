@@ -154,6 +154,10 @@ public class App implements CommandLineRunner {
         System.setProperty("sun.net.spi.nameservice.nameservers", "");
         System.setProperty("sun.net.spi.nameservice.provider.1", "dns,sun");
         
+        // Explicitly disable SOCKS proxy to avoid protocol confusion
+        System.setProperty("socksProxyHost", "");
+        System.setProperty("socksProxyPort", "");
+        
         logger.info("Java network configuration set to use system stack (like PowerShell)");
         
         // If proxy is configured, try to resolve the hostname first

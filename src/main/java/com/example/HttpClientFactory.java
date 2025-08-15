@@ -54,9 +54,10 @@ public class HttpClientFactory {
         
         // Configure proxy if enabled
         if (proxyConfig.isProxyEnabled()) {
-            HttpHost proxy = new HttpHost(proxyConfig.getHost(), proxyConfig.getPortAsInt());
+            // Explicitly use HTTP proxy (not SOCKS)
+            HttpHost proxy = new HttpHost(proxyConfig.getHost(), proxyConfig.getPortAsInt(), "http");
             requestConfigBuilder.setProxy(proxy);
-            logger.info("Using proxy: {}:{}", proxyConfig.getHost(), proxyConfig.getPort());
+            logger.info("Using HTTP proxy: {}:{}", proxyConfig.getHost(), proxyConfig.getPort());
             
             // Configure proxy credentials if available - use simple basic auth like PowerShell
             if (proxyConfig.hasCredentials()) {
@@ -103,7 +104,11 @@ public class HttpClientFactory {
         System.setProperty("sun.net.spi.nameservice.nameservers", "");
         System.setProperty("sun.net.spi.nameservice.provider.1", "dns,sun");
         
-        // Set system properties similar to PowerShell proxy approach
+        // Explicitly disable SOCKS proxy to avoid protocol confusion
+        System.setProperty("socksProxyHost", "");
+        System.setProperty("socksProxyPort", "");
+        
+        // Set HTTP proxy properties (not SOCKS)
         System.setProperty("http.proxyHost", proxyConfig.getHost());
         System.setProperty("http.proxyPort", proxyConfig.getPort());
         System.setProperty("https.proxyHost", proxyConfig.getHost());
@@ -117,7 +122,7 @@ public class HttpClientFactory {
             System.setProperty("https.proxyPassword", proxyConfig.getPassword());
         }
         
-        logger.info("System proxy properties configured to match PowerShell behavior: {}:{}", proxyConfig.getHost(), proxyConfig.getPort());
+        logger.info("HTTP proxy properties configured (SOCKS disabled): {}:{}", proxyConfig.getHost(), proxyConfig.getPort());
     }
     
     private CredentialsProvider createCredentialsProvider() {
