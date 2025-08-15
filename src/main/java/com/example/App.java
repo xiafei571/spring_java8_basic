@@ -91,6 +91,9 @@ public class App implements CommandLineRunner {
         
         HttpGet request = new HttpGet(getUrl);
         
+        // Use PowerShell-compatible headers only
+        request.setHeader("User-Agent", "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.19041.4648");
+        
         try {
             HttpResponse response = httpClient.execute(request);
             int statusCode = response.getStatusLine().getStatusCode();
@@ -114,6 +117,10 @@ public class App implements CommandLineRunner {
         StringEntity entity = new StringEntity(jsonPayload);
         entity.setContentType("application/json");
         request.setEntity(entity);
+        
+        // Use PowerShell-compatible headers only
+        request.setHeader("User-Agent", "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.19041.4648");
+        request.setHeader("Content-Type", "application/json");
         
         try {
             HttpResponse response = httpClient.execute(request);
