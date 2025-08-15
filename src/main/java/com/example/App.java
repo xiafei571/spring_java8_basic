@@ -177,9 +177,13 @@ public class App implements CommandLineRunner {
             } else if ("-proxyPort".equals(args[i]) && i + 1 < args.length) {
                 proxyConfig.setPort(args[i + 1]);
             } else if ("-proxyUser".equals(args[i]) && i + 1 < args.length) {
-                proxyConfig.setUsername(args[i + 1]);
+                String user = args[i + 1];
+                proxyConfig.setUsername(user);
+                logger.info("Proxy user set to: {}", user);
             } else if ("-proxyPassword".equals(args[i]) && i + 1 < args.length) {
-                proxyConfig.setPassword(args[i + 1]);
+                String pass = args[i + 1];
+                proxyConfig.setPassword(pass);
+                logger.info("Proxy password set (length: {})", pass != null ? pass.length() : 0);
             } else if ("-proxyDomain".equals(args[i]) && i + 1 < args.length) {
                 proxyConfig.setDomain(args[i + 1]);
             }
@@ -263,9 +267,16 @@ public class App implements CommandLineRunner {
                 String username = proxyConfig.getUsername();
                 String password = proxyConfig.getPassword();
                 
+                logger.info("Creating auth header for user: {}", username);
+                logger.info("Password available: {}, length: {}", password != null, password != null ? password.length() : 0);
+                
+                if (username == null || password == null) {
+                    logger.error("Cannot create auth header - username or password is null");
+                    return;
+                }
+                
                 // Handle domain\username format
                 if (username.contains("\\")) {
-                    // Keep the full domain\username format for Basic auth
                     logger.info("Using domain\\username format: {}", username);
                 } else {
                     logger.info("Using plain username: {}", username);
@@ -277,12 +288,15 @@ public class App implements CommandLineRunner {
                 
                 request.setHeader("Proxy-Authorization", authHeader);
                 
-                logger.info("Added Proxy-Authorization header for user: {}", username);
-                logger.info("Auth header: Proxy-Authorization: {}", authHeader.substring(0, Math.min(20, authHeader.length())) + "...");
+                logger.info("Successfully added Proxy-Authorization header for user: {}", username);
+                logger.info("Credentials format: {}:*** (total length: {})", username, credentials.length());
+                logger.info("Auth header: Proxy-Authorization: {}", authHeader.substring(0, Math.min(25, authHeader.length())) + "...");
                 
             } catch (Exception e) {
-                logger.error("Failed to create proxy authorization header: {}", e.getMessage());
+                logger.error("Failed to create proxy authorization header: {}", e.getMessage(), e);
             }
+        } else {
+            logger.warn("No credentials available - cannot add Proxy-Authorization header");
         }
     }
     
@@ -290,19 +304,37 @@ public class App implements CommandLineRunner {
      * Test and debug authentication encoding
      */
     private void testAuthEncoding() {
+        logger.info("=== Auth Debug ===");
+        logger.info("ProxyConfig object: {}", proxyConfig);
+        logger.info("ProxyConfig.hasCredentials(): {}", proxyConfig.hasCredentials());
+        
         String username = proxyConfig.getUsername();
         String password = proxyConfig.getPassword();
         
-        logger.info("=== Auth Debug ===");
-        logger.info("Username: {}", username);
+        logger.info("Username: {}", username != null ? username : "null");
+        logger.info("Password is null: {}", password == null);
+        logger.info("Password is empty: {}", password != null && password.isEmpty());
         logger.info("Password length: {}", password != null ? password.length() : 0);
         
-        String credentials = username + ":" + password;
-        String encoded = Base64.getEncoder().encodeToString(credentials.getBytes());
+        if (password != null && password.length() > 0) {
+            // Show first and last char for verification without exposing password
+            logger.info("Password first char: '{}', last char: '{}'", password.charAt(0), password.charAt(password.length() - 1));
+        }
         
-        logger.info("Credentials string: {} (length: {})", credentials.substring(0, Math.min(10, credentials.length())) + "...", credentials.length());
-        logger.info("Base64 encoded: {} (length: {})", encoded.substring(0, Math.min(20, encoded.length())) + "...", encoded.length());
-        logger.info("Full auth header would be: Basic {}", encoded.substring(0, Math.min(20, encoded.length())) + "...");
+        if (username != null && password != null) {
+            String credentials = username + ":" + password;
+            String encoded = Base64.getEncoder().encodeToString(credentials.getBytes());
+            
+            logger.info("Credentials string: {} (length: {})", username + ":***", credentials.length());
+            logger.info("Base64 encoded: {} (length: {})", encoded.substring(0, Math.min(20, encoded.length())) + "...", encoded.length());
+            logger.info("Full auth header would be: Basic {}", encoded.substring(0, Math.min(20, encoded.length())) + "...");
+            
+            // Test decoding to verify
+            String decoded = new String(Base64.getDecoder().decode(encoded));
+            logger.info("Verification - decoded back: {} (length: {})", decoded.substring(0, Math.min(10, decoded.length())) + ":***", decoded.length());
+        } else {
+            logger.error("Cannot create credentials - username or password is null!");
+        }
         logger.info("=== End Auth Debug ===");
     }
 }
