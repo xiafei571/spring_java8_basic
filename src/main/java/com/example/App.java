@@ -18,11 +18,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.util.Base64;
 import java.io.InputStreamReader;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
+import java.net.*;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -99,28 +98,59 @@ public class App implements CommandLineRunner {
     private void performGetRequest(CloseableHttpClient httpClient) throws IOException {
         logger.info("Performing GET request to: {}", getUrl);
         
-        HttpGet request = new HttpGet(getUrl);
-        
-        // Let HttpClient handle everything automatically - no custom headers
-        
+        // Use raw HTTP connection instead of HttpClient
+        performRawHttpRequest(getUrl);
+    }
+    
+    private void performRawHttpRequest(String urlString) throws IOException {
         try {
-            // Debug: log all request headers
-            logger.info("Request headers:");
-            for (org.apache.http.Header header : request.getAllHeaders()) {
-                if (header.getName().equals("Proxy-Authorization")) {
-                    logger.info("  {}: {} (truncated for security)", header.getName(), header.getValue().substring(0, Math.min(20, header.getValue().length())) + "...");
-                } else {
-                    logger.info("  {}: {}", header.getName(), header.getValue());
-                }
+            // Create Basic auth header
+            String credentials = proxyConfig.getUsername() + ":" + proxyConfig.getPassword();
+            String authHeaderValue = "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes());
+            
+            // Create proxy
+            Proxy proxy = new Proxy(Proxy.Type.HTTP, 
+                new InetSocketAddress(proxyConfig.getHost(), proxyConfig.getPortAsInt()));
+            
+            // Create connection
+            URL url = new URL(urlString);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection(proxy);
+            
+            // Set headers like PowerShell
+            connection.setRequestMethod("GET");
+            connection.setRequestProperty("User-Agent", "Java-PowerShell-Compatible/1.0");
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("Proxy-Authorization", authHeaderValue);
+            
+            // Set timeouts
+            connection.setConnectTimeout(60000);
+            connection.setReadTimeout(60000);
+            
+            // Make request
+            int responseCode = connection.getResponseCode();
+            String responseMessage = connection.getResponseMessage();
+            
+            logger.info("Raw HTTP Response - Code: {}, Message: {}", responseCode, responseMessage);
+            
+            // Read response
+            BufferedReader reader;
+            if (responseCode >= 200 && responseCode < 300) {
+                reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            } else {
+                reader = new BufferedReader(new InputStreamReader(connection.getErrorStream()));
             }
             
-            HttpResponse response = httpClient.execute(request);
-            int statusCode = response.getStatusLine().getStatusCode();
-            String responseBody = EntityUtils.toString(response.getEntity());
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                response.append(line).append("\n");
+            }
+            reader.close();
             
-            logger.info("GET Response - Status: {}, Body: {}", statusCode, responseBody);
-        } finally {
-            request.releaseConnection();
+            logger.info("Raw HTTP Response Body: {}", response.toString());
+            
+        } catch (Exception e) {
+            logger.error("Raw HTTP request failed: {}", e.getMessage(), e);
         }
     }
 
