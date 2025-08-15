@@ -67,6 +67,11 @@ public class App implements CommandLineRunner {
         // Parse command line arguments for proxy settings
         parseProxyArguments(args);
         
+        // Debug: Test authentication encoding
+        if (proxyConfig.hasCredentials()) {
+            testAuthEncoding();
+        }
+        
         // Configure DNS settings to resolve proxy hostname
         configureDNS();
         
@@ -104,6 +109,16 @@ public class App implements CommandLineRunner {
         }
         
         try {
+            // Debug: log all request headers
+            logger.info("Request headers:");
+            for (org.apache.http.Header header : request.getAllHeaders()) {
+                if (header.getName().equals("Proxy-Authorization")) {
+                    logger.info("  {}: {} (truncated for security)", header.getName(), header.getValue().substring(0, Math.min(20, header.getValue().length())) + "...");
+                } else {
+                    logger.info("  {}: {}", header.getName(), header.getValue());
+                }
+            }
+            
             HttpResponse response = httpClient.execute(request);
             int statusCode = response.getStatusLine().getStatusCode();
             String responseBody = EntityUtils.toString(response.getEntity());
@@ -244,10 +259,50 @@ public class App implements CommandLineRunner {
      */
     private void addProxyAuthHeader(org.apache.http.HttpMessage request) {
         if (proxyConfig.hasCredentials()) {
-            String credentials = proxyConfig.getUsername() + ":" + proxyConfig.getPassword();
-            String encoded = Base64.getEncoder().encodeToString(credentials.getBytes());
-            request.setHeader("Proxy-Authorization", "Basic " + encoded);
-            logger.info("Added preemptive proxy authentication header for user: {}", proxyConfig.getUsername());
+            try {
+                String username = proxyConfig.getUsername();
+                String password = proxyConfig.getPassword();
+                
+                // Handle domain\username format
+                if (username.contains("\\")) {
+                    // Keep the full domain\username format for Basic auth
+                    logger.info("Using domain\\username format: {}", username);
+                } else {
+                    logger.info("Using plain username: {}", username);
+                }
+                
+                String credentials = username + ":" + password;
+                String encoded = Base64.getEncoder().encodeToString(credentials.getBytes("UTF-8"));
+                String authHeader = "Basic " + encoded;
+                
+                request.setHeader("Proxy-Authorization", authHeader);
+                
+                logger.info("Added Proxy-Authorization header for user: {}", username);
+                logger.info("Auth header: Proxy-Authorization: {}", authHeader.substring(0, Math.min(20, authHeader.length())) + "...");
+                
+            } catch (Exception e) {
+                logger.error("Failed to create proxy authorization header: {}", e.getMessage());
+            }
         }
+    }
+    
+    /**
+     * Test and debug authentication encoding
+     */
+    private void testAuthEncoding() {
+        String username = proxyConfig.getUsername();
+        String password = proxyConfig.getPassword();
+        
+        logger.info("=== Auth Debug ===");
+        logger.info("Username: {}", username);
+        logger.info("Password length: {}", password != null ? password.length() : 0);
+        
+        String credentials = username + ":" + password;
+        String encoded = Base64.getEncoder().encodeToString(credentials.getBytes());
+        
+        logger.info("Credentials string: {} (length: {})", credentials.substring(0, Math.min(10, credentials.length())) + "...", credentials.length());
+        logger.info("Base64 encoded: {} (length: {})", encoded.substring(0, Math.min(20, encoded.length())) + "...", encoded.length());
+        logger.info("Full auth header would be: Basic {}", encoded.substring(0, Math.min(20, encoded.length())) + "...");
+        logger.info("=== End Auth Debug ===");
     }
 }

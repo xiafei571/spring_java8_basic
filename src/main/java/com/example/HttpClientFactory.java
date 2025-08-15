@@ -61,16 +61,15 @@ public class HttpClientFactory {
                 .setMaxConnTotal(100)
                 .setMaxConnPerRoute(20);
         
-        // Enable preemptive authentication to avoid 407 challenge
-        builder.addInterceptorFirst(new PreemptiveAuthInterceptor());
+        // Disable automatic authentication - we'll handle it manually
+        builder.disableAuthCaching()
+               .disableAutomaticRetries();
         
-        // Configure timeouts and authentication schemes
+        // Configure timeouts only - manual auth via headers
         RequestConfig.Builder requestConfigBuilder = RequestConfig.custom()
                 .setConnectTimeout(60000)
                 .setSocketTimeout(120000)
-                .setConnectionRequestTimeout(60000)
-                .setTargetPreferredAuthSchemes(Arrays.asList(AuthSchemes.BASIC, AuthSchemes.NTLM))
-                .setProxyPreferredAuthSchemes(Arrays.asList(AuthSchemes.BASIC, AuthSchemes.NTLM));
+                .setConnectionRequestTimeout(60000);
         
         // Configure proxy if enabled
         if (proxyConfig.isProxyEnabled()) {
@@ -79,12 +78,8 @@ public class HttpClientFactory {
             requestConfigBuilder.setProxy(proxy);
             logger.info("Using HTTP proxy: {}:{}", proxyConfig.getHost(), proxyConfig.getPort());
             
-            // Configure proxy credentials for NTLM/NEGOTIATE authentication
-            if (proxyConfig.hasCredentials()) {
-                CredentialsProvider credentialsProvider = createCredentialsProvider();
-                builder.setDefaultCredentialsProvider(credentialsProvider);
-                logger.info("Proxy credentials configured for user: {} (NTLM/NEGOTIATE)", proxyConfig.getUsername());
-            }
+            // Skip automatic credentials - we use manual Proxy-Authorization header
+            logger.info("Proxy configured: {}:{} (manual auth)", proxyConfig.getHost(), proxyConfig.getPort());
         }
         
         builder.setDefaultRequestConfig(requestConfigBuilder.build());
