@@ -20,8 +20,11 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.*;
+import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.Base64;
+import javax.net.ssl.*;
+import javax.security.cert.CertificateException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -104,6 +107,9 @@ public class App implements CommandLineRunner {
     
     private void performRawHttpRequest(String urlString) throws IOException {
         try {
+            // Configure SSL to trust all certificates (like PowerShell often does)
+            configureSSLTrustAll();
+            
             // Create Basic auth header
             String credentials = proxyConfig.getUsername() + ":" + proxyConfig.getPassword();
             String authHeaderValue = "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes());
@@ -115,6 +121,13 @@ public class App implements CommandLineRunner {
             // Create connection
             URL url = new URL(urlString);
             HttpURLConnection connection = (HttpURLConnection) url.openConnection(proxy);
+            
+            // Configure SSL for HTTPS connections
+            if (connection instanceof HttpsURLConnection) {
+                HttpsURLConnection httpsConnection = (HttpsURLConnection) connection;
+                httpsConnection.setSSLSocketFactory(getTrustAllSSLSocketFactory());
+                httpsConnection.setHostnameVerifier(getTrustAllHostnameVerifier());
+            }
             
             // Set headers like PowerShell
             connection.setRequestMethod("GET");
@@ -167,6 +180,9 @@ public class App implements CommandLineRunner {
     
     private void performRawHttpPostRequest(String urlString, String jsonPayload) throws IOException {
         try {
+            // Configure SSL to trust all certificates
+            configureSSLTrustAll();
+            
             // Create Basic auth header
             String credentials = proxyConfig.getUsername() + ":" + proxyConfig.getPassword();
             String authHeaderValue = "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes());
@@ -178,6 +194,13 @@ public class App implements CommandLineRunner {
             // Create connection
             URL url = new URL(urlString);
             HttpURLConnection connection = (HttpURLConnection) url.openConnection(proxy);
+            
+            // Configure SSL for HTTPS connections
+            if (connection instanceof HttpsURLConnection) {
+                HttpsURLConnection httpsConnection = (HttpsURLConnection) connection;
+                httpsConnection.setSSLSocketFactory(getTrustAllSSLSocketFactory());
+                httpsConnection.setHostnameVerifier(getTrustAllHostnameVerifier());
+            }
             
             // Set headers for POST
             connection.setRequestMethod("POST");
@@ -364,6 +387,63 @@ public class App implements CommandLineRunner {
         } else {
             logger.warn("No credentials available - cannot add Proxy-Authorization header");
         }
+    }
+    
+    /**
+     * Configure SSL to trust all certificates (like PowerShell often does in corporate environments)
+     */
+    private void configureSSLTrustAll() {
+        try {
+            // Create trust manager that accepts all certificates
+            TrustManager[] trustAllCerts = new TrustManager[] {
+                new X509TrustManager() {
+                    public X509Certificate[] getAcceptedIssuers() { return null; }
+                    public void checkClientTrusted(X509Certificate[] certs, String authType) { }
+                    public void checkServerTrusted(X509Certificate[] certs, String authType) { }
+                }
+            };
+            
+            // Install the all-trusting trust manager
+            SSLContext sc = SSLContext.getInstance("SSL");
+            sc.init(null, trustAllCerts, new java.security.SecureRandom());
+            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+            
+            // Create hostname verifier that accepts all hostnames
+            HostnameVerifier allHostsValid = new HostnameVerifier() {
+                public boolean verify(String hostname, SSLSession session) { return true; }
+            };
+            HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid);
+            
+        } catch (Exception e) {
+            logger.warn("Failed to configure SSL trust all: {}", e.getMessage());
+        }
+    }
+    
+    private SSLSocketFactory getTrustAllSSLSocketFactory() {
+        try {
+            TrustManager[] trustAllCerts = new TrustManager[] {
+                new X509TrustManager() {
+                    public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+                    public void checkClientTrusted(X509Certificate[] certs, String authType) { }
+                    public void checkServerTrusted(X509Certificate[] certs, String authType) { }
+                }
+            };
+            
+            SSLContext sc = SSLContext.getInstance("SSL");
+            sc.init(null, trustAllCerts, new java.security.SecureRandom());
+            return sc.getSocketFactory();
+        } catch (Exception e) {
+            logger.warn("Failed to create trust-all SSL socket factory: {}", e.getMessage());
+            return null;
+        }
+    }
+    
+    private HostnameVerifier getTrustAllHostnameVerifier() {
+        return new HostnameVerifier() {
+            public boolean verify(String hostname, SSLSession session) { 
+                return true; 
+            }
+        };
     }
     
 }
