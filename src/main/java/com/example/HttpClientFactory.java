@@ -93,8 +93,8 @@ public class HttpClientFactory {
     }
     
     private void configureSystemProxyProperties() {
-        // Force Java to use system network stack like PowerShell
-        System.setProperty("java.net.useSystemProxies", "true");
+        // Disable system proxy detection to avoid SOCKS confusion
+        System.setProperty("java.net.useSystemProxies", "false");
         System.setProperty("networkaddress.cache.ttl", "0");
         System.setProperty("networkaddress.cache.negative.ttl", "0");
         System.setProperty("java.net.preferIPv4Stack", "true");
@@ -107,6 +107,7 @@ public class HttpClientFactory {
         // Explicitly disable SOCKS proxy to avoid protocol confusion
         System.setProperty("socksProxyHost", "");
         System.setProperty("socksProxyPort", "");
+        System.setProperty("socksProxyVersion", "");
         
         // Set HTTP proxy properties (not SOCKS)
         System.setProperty("http.proxyHost", proxyConfig.getHost());
@@ -122,7 +123,7 @@ public class HttpClientFactory {
             System.setProperty("https.proxyPassword", proxyConfig.getPassword());
         }
         
-        logger.info("HTTP proxy properties configured (SOCKS disabled): {}:{}", proxyConfig.getHost(), proxyConfig.getPort());
+        logger.info("HTTP proxy properties configured (system proxies disabled): {}:{}", proxyConfig.getHost(), proxyConfig.getPort());
     }
     
     private CredentialsProvider createCredentialsProvider() {

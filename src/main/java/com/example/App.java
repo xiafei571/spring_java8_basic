@@ -143,8 +143,8 @@ public class App implements CommandLineRunner {
     }
     
     private void configureDNS() {
-        // Force Java to use system network stack like PowerShell
-        System.setProperty("java.net.useSystemProxies", "true");
+        // Disable system proxy detection to avoid SOCKS confusion
+        System.setProperty("java.net.useSystemProxies", "false");
         System.setProperty("networkaddress.cache.ttl", "0");
         System.setProperty("networkaddress.cache.negative.ttl", "0");
         System.setProperty("java.net.preferIPv4Stack", "true");
@@ -157,8 +157,9 @@ public class App implements CommandLineRunner {
         // Explicitly disable SOCKS proxy to avoid protocol confusion
         System.setProperty("socksProxyHost", "");
         System.setProperty("socksProxyPort", "");
+        System.setProperty("socksProxyVersion", "");
         
-        logger.info("Java network configuration set to use system stack (like PowerShell)");
+        logger.info("Java network configuration set (system proxies disabled)");
         
         // If proxy is configured, try to resolve the hostname first
         if (proxyConfig.isProxyEnabled()) {
