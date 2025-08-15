@@ -54,8 +54,12 @@ public class App implements CommandLineRunner {
         System.setProperty("socksProxyHost", "");
         System.setProperty("socksProxyPort", "");
         
-        // Configure for Basic authentication (like PowerShell ProxyCredential)
+        // Force Basic authentication only - disable all integrated auth
         System.setProperty("sun.net.http.allowRestrictedHeaders", "true");
+        System.setProperty("javax.security.auth.useSubjectCredsOnly", "false");
+        System.setProperty("java.security.krb5.conf", "");
+        System.setProperty("java.security.auth.login.config", "");
+        System.setProperty("sun.security.spnego.debug", "false");
         
         SpringApplication.run(App.class, args);
     }
@@ -67,10 +71,7 @@ public class App implements CommandLineRunner {
         // Parse command line arguments for proxy settings
         parseProxyArguments(args);
         
-        // Debug: Test authentication encoding
-        if (proxyConfig.hasCredentials()) {
-            testAuthEncoding();
-        }
+        // Authentication configured via command line arguments
         
         // Configure DNS settings to resolve proxy hostname
         configureDNS();
@@ -256,7 +257,6 @@ public class App implements CommandLineRunner {
                 
                 logger.info("Creating auth header for user: {}", username);
                 logger.info("Password available: {}, length: {}", password != null, password != null ? password.length() : 0);
-                logger.info("CRITICAL: Raw password value: '{}'", password);
                 
                 // Test hasCredentials again
                 logger.info("hasCredentials() returns: {}", proxyConfig.hasCredentials());
@@ -292,49 +292,4 @@ public class App implements CommandLineRunner {
         }
     }
     
-    /**
-     * Test and debug authentication encoding
-     */
-    private void testAuthEncoding() {
-        logger.info("=== Auth Debug ===");
-        logger.info("ProxyConfig object: {}", proxyConfig);
-        logger.info("ProxyConfig.hasCredentials(): {}", proxyConfig.hasCredentials());
-        
-        String username = proxyConfig.getUsername();
-        String password = proxyConfig.getPassword();
-        
-        logger.info("Username: {}", username != null ? username : "null");
-        logger.info("Password is null: {}", password == null);
-        logger.info("Password is empty: {}", password != null && password.isEmpty());
-        logger.info("Password length: {}", password != null ? password.length() : 0);
-        
-        // Direct field access debug
-        logger.info("CRITICAL DEBUG: password field value: '{}'", password);
-        
-        // Test what happens when we call getPassword() multiple times
-        String password2 = proxyConfig.getPassword();
-        logger.info("Second call to getPassword(): null={}, length={}", password2 == null, password2 != null ? password2.length() : 0);
-        logger.info("Are they the same object? {}", password == password2);
-        
-        if (password != null && password.length() > 0) {
-            // Show first and last char for verification without exposing password
-            logger.info("Password first char: '{}', last char: '{}'", password.charAt(0), password.charAt(password.length() - 1));
-        }
-        
-        if (username != null && password != null) {
-            String credentials = username + ":" + password;
-            String encoded = Base64.getEncoder().encodeToString(credentials.getBytes());
-            
-            logger.info("Credentials string: {} (length: {})", username + ":***", credentials.length());
-            logger.info("Base64 encoded: {} (length: {})", encoded.substring(0, Math.min(20, encoded.length())) + "...", encoded.length());
-            logger.info("Full auth header would be: Basic {}", encoded.substring(0, Math.min(20, encoded.length())) + "...");
-            
-            // Test decoding to verify
-            String decoded = new String(Base64.getDecoder().decode(encoded));
-            logger.info("Verification - decoded back: {} (length: {})", decoded.substring(0, Math.min(10, decoded.length())) + ":***", decoded.length());
-        } else {
-            logger.error("Cannot create credentials - username or password is null!");
-        }
-        logger.info("=== End Auth Debug ===");
-    }
 }

@@ -75,8 +75,8 @@ public class ProxyConfig {
 
     public void setPassword(String password) {
         this.password = password;
-        // Debug logging
-        System.out.println("DEBUG: Password set to length: " + (password != null ? password.length() : 0));
+        // Debug logging - length only for security
+        System.out.println("DEBUG: Password set (length: " + (password != null ? password.length() : 0) + ")");
     }
 
     public boolean isProxyEnabled() {

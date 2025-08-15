@@ -61,14 +61,16 @@ public class HttpClientFactory {
                 .setMaxConnTotal(100)
                 .setMaxConnPerRoute(20);
         
-        // Let HttpClient handle authentication automatically
-        // builder.disableAuthCaching().disableAutomaticRetries();
+        // Add preemptive Basic authentication interceptor
+        builder.addInterceptorFirst(new PreemptiveBasicAuthInterceptor());
         
-        // Configure timeouts only - manual auth via headers
+        // Configure timeouts and FORCE Basic auth only
         RequestConfig.Builder requestConfigBuilder = RequestConfig.custom()
                 .setConnectTimeout(60000)
                 .setSocketTimeout(120000)
-                .setConnectionRequestTimeout(60000);
+                .setConnectionRequestTimeout(60000)
+                .setProxyPreferredAuthSchemes(Arrays.asList(AuthSchemes.BASIC))
+                .setTargetPreferredAuthSchemes(Arrays.asList(AuthSchemes.BASIC));
         
         // Configure proxy if enabled
         if (proxyConfig.isProxyEnabled()) {
@@ -229,22 +231,30 @@ public class HttpClientFactory {
     }
     
     /**
-     * Preemptive authentication interceptor to avoid 407 challenges
-     * This sends credentials proactively like PowerShell does
+     * Preemptive Basic authentication interceptor 
+     * Forces Basic auth without negotiation like PowerShell
      */
-    private static class PreemptiveAuthInterceptor implements HttpRequestInterceptor {
+    private static class PreemptiveBasicAuthInterceptor implements HttpRequestInterceptor {
         @Override
         public void process(HttpRequest request, HttpContext context) throws HttpException, IOException {
             AuthState proxyAuthState = (AuthState) context.getAttribute(HttpClientContext.PROXY_AUTH_STATE);
             
             if (proxyAuthState != null && proxyAuthState.getAuthScheme() == null) {
                 CredentialsProvider credentialsProvider = (CredentialsProvider) context.getAttribute(HttpClientContext.CREDS_PROVIDER);
-                HttpHost proxy = (HttpHost) context.getAttribute(HttpCoreContext.HTTP_TARGET_HOST);
                 
-                if (credentialsProvider != null && proxy != null) {
-                    Credentials credentials = credentialsProvider.getCredentials(new AuthScope(proxy));
-                    if (credentials != null) {
-                        proxyAuthState.update(new BasicScheme(), credentials);
+                if (credentialsProvider != null) {
+                    // Force Basic scheme - no negotiation
+                    BasicScheme basicScheme = new BasicScheme();
+                    proxyAuthState.update(basicScheme, null);
+                    
+                    // Get proxy from request config
+                    Object proxyObj = context.getAttribute(HttpCoreContext.HTTP_PROXY_HOST);
+                    if (proxyObj instanceof HttpHost) {
+                        HttpHost proxy = (HttpHost) proxyObj;
+                        Credentials credentials = credentialsProvider.getCredentials(new AuthScope(proxy));
+                        if (credentials != null) {
+                            proxyAuthState.update(basicScheme, credentials);
+                        }
                     }
                 }
             }
