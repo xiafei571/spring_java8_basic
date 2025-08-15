@@ -18,20 +18,22 @@ public class ProxyConfig {
     private String domain;
 
     public ProxyConfig() {
-        loadFromFile();
+        // Skip file loading - use command line arguments only
+        // loadFromFile();
     }
 
     private void loadFromFile() {
         Properties props = new Properties();
         try (FileInputStream fis = new FileInputStream("proxy.properties")) {
             props.load(fis);
-            this.host = props.getProperty("proxy.host");
-            this.port = props.getProperty("proxy.port");
-            this.username = props.getProperty("proxy.username");
-            this.password = props.getProperty("proxy.password");
-            this.domain = props.getProperty("proxy.domain");
+            // Only override if not already set from command line
+            if (this.host == null) this.host = props.getProperty("proxy.host");
+            if (this.port == null) this.port = props.getProperty("proxy.port");
+            if (this.username == null) this.username = props.getProperty("proxy.username");
+            if (this.password == null) this.password = props.getProperty("proxy.password");
+            if (this.domain == null) this.domain = props.getProperty("proxy.domain");
         } catch (IOException e) {
-            // File doesn't exist or can't be read, use default values
+            // File doesn't exist or can't be read, keep existing values
         }
     }
 
@@ -73,6 +75,8 @@ public class ProxyConfig {
 
     public void setPassword(String password) {
         this.password = password;
+        // Debug logging
+        System.out.println("DEBUG: Password set to length: " + (password != null ? password.length() : 0));
     }
 
     public boolean isProxyEnabled() {

@@ -269,6 +269,10 @@ public class App implements CommandLineRunner {
                 
                 logger.info("Creating auth header for user: {}", username);
                 logger.info("Password available: {}, length: {}", password != null, password != null ? password.length() : 0);
+                logger.info("CRITICAL: Raw password value: '{}'", password);
+                
+                // Test hasCredentials again
+                logger.info("hasCredentials() returns: {}", proxyConfig.hasCredentials());
                 
                 if (username == null || password == null) {
                     logger.error("Cannot create auth header - username or password is null");
@@ -282,7 +286,8 @@ public class App implements CommandLineRunner {
                     logger.info("Using plain username: {}", username);
                 }
                 
-                String credentials = username + ":" + password;
+                String credentials = username + ":" + (password != null ? password : "");
+                logger.info("DEBUG: Creating credentials with username='{}', password length={}", username, password != null ? password.length() : 0);
                 String encoded = Base64.getEncoder().encodeToString(credentials.getBytes("UTF-8"));
                 String authHeader = "Basic " + encoded;
                 
@@ -315,6 +320,14 @@ public class App implements CommandLineRunner {
         logger.info("Password is null: {}", password == null);
         logger.info("Password is empty: {}", password != null && password.isEmpty());
         logger.info("Password length: {}", password != null ? password.length() : 0);
+        
+        // Direct field access debug
+        logger.info("CRITICAL DEBUG: password field value: '{}'", password);
+        
+        // Test what happens when we call getPassword() multiple times
+        String password2 = proxyConfig.getPassword();
+        logger.info("Second call to getPassword(): null={}, length={}", password2 == null, password2 != null ? password2.length() : 0);
+        logger.info("Are they the same object? {}", password == password2);
         
         if (password != null && password.length() > 0) {
             // Show first and last char for verification without exposing password
