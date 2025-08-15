@@ -1,21 +1,25 @@
 package com.example;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import okhttp3.*;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.Proxy;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 @SpringBootApplication
 public class App implements CommandLineRunner {
@@ -28,52 +32,13 @@ public class App implements CommandLineRunner {
     @Value("${app.post.url}")
     private String postUrl;
 
-    private final OkHttpClient httpClient = createHttpClient();
+    @Autowired
+    private HttpClientFactory httpClientFactory;
     
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    private static OkHttpClient createHttpClient() {
-        // Configure enterprise-friendly SSL settings
-        configureEnterpriseSSL();
-        
-        OkHttpClient.Builder builder = new OkHttpClient.Builder()
-                .connectTimeout(60, TimeUnit.SECONDS)  // Extended timeout for enterprise networks
-                .readTimeout(120, TimeUnit.SECONDS)    // Extended timeout for enterprise networks
-                .writeTimeout(120, TimeUnit.SECONDS)   // Extended timeout for enterprise networks
-                .retryOnConnectionFailure(true);       // Retry on connection failures
-
-        // Check for system proxy settings (common in corporate environments)
-        String proxyHost = System.getProperty("https.proxyHost");
-        String proxyPort = System.getProperty("https.proxyPort");
-        
-        if (proxyHost != null && proxyPort != null) {
-            try {
-                Proxy proxy = new Proxy(Proxy.Type.HTTP, 
-                    new InetSocketAddress(proxyHost, Integer.parseInt(proxyPort)));
-                builder.proxy(proxy);
-                LoggerFactory.getLogger(App.class).info("Using proxy: {}:{}", proxyHost, proxyPort);
-            } catch (NumberFormatException e) {
-                LoggerFactory.getLogger(App.class).warn("Invalid proxy port: {}", proxyPort);
-            }
-        }
-
-        return builder.build();
-    }
     
-    private static void configureEnterpriseSSL() {
-        // Enterprise network friendly SSL configuration
-        System.setProperty("java.net.useSystemProxies", "true");
-        System.setProperty("https.protocols", "TLSv1.2,TLSv1.1,TLSv1");
-        System.setProperty("jdk.tls.client.protocols", "TLSv1.2,TLSv1.1,TLSv1");
-        System.setProperty("com.sun.net.ssl.checkRevocation", "false");
-        System.setProperty("jdk.tls.useExtendedMasterSecret", "false");
-        
-        // Try to use Windows certificate store if available
-        String osName = System.getProperty("os.name", "").toLowerCase();
-        if (osName.contains("windows")) {
-            System.setProperty("javax.net.ssl.trustStoreType", "Windows-ROOT");
-        }
-    }
+    @Autowired
+    private ProxyConfig proxyConfig;
 
     public static void main(String[] args) {
         SpringApplication.run(App.class, args);
@@ -83,15 +48,18 @@ public class App implements CommandLineRunner {
     public void run(String... args) throws Exception {
         logger.info("Starting CLI application");
         
+        // Parse command line arguments for proxy settings
+        parseProxyArguments(args);
+        
         // Log all command line arguments
         logger.info("Command line arguments: {}", Arrays.toString(args));
         
-        try {
+        try (CloseableHttpClient httpClient = httpClientFactory.createHttpClient()) {
             // Perform GET request
-            performGetRequest();
+            performGetRequest(httpClient);
             
             // Perform POST request
-            performPostRequest();
+            performPostRequest(httpClient);
             
             logger.info("All HTTP requests completed successfully");
             
@@ -103,23 +71,23 @@ public class App implements CommandLineRunner {
         }
     }
 
-    private void performGetRequest() throws IOException {
+    private void performGetRequest(CloseableHttpClient httpClient) throws IOException {
         logger.info("Performing GET request to: {}", getUrl);
         
-        Request request = new Request.Builder()
-                .url(getUrl)
-                .get()
-                .build();
-
-        try (Response response = httpClient.newCall(request).execute()) {
-            int statusCode = response.code();
-            String responseBody = response.body() != null ? response.body().string() : "";
+        HttpGet request = new HttpGet(getUrl);
+        
+        try {
+            HttpResponse response = httpClient.execute(request);
+            int statusCode = response.getStatusLine().getStatusCode();
+            String responseBody = EntityUtils.toString(response.getEntity());
             
             logger.info("GET Response - Status: {}, Body: {}", statusCode, responseBody);
+        } finally {
+            request.releaseConnection();
         }
     }
 
-    private void performPostRequest() throws IOException {
+    private void performPostRequest(CloseableHttpClient httpClient) throws IOException {
         logger.info("Performing POST request to: {}", postUrl);
         
         // Create JSON payload
@@ -127,21 +95,33 @@ public class App implements CommandLineRunner {
         payload.put("ping", "hello-from-cli");
         String jsonPayload = objectMapper.writeValueAsString(payload);
         
-        RequestBody requestBody = RequestBody.create(
-                jsonPayload, 
-                MediaType.parse("application/json")
-        );
+        HttpPost request = new HttpPost(postUrl);
+        StringEntity entity = new StringEntity(jsonPayload);
+        entity.setContentType("application/json");
+        request.setEntity(entity);
         
-        Request request = new Request.Builder()
-                .url(postUrl)
-                .post(requestBody)
-                .build();
-
-        try (Response response = httpClient.newCall(request).execute()) {
-            int statusCode = response.code();
-            String responseBody = response.body() != null ? response.body().string() : "";
+        try {
+            HttpResponse response = httpClient.execute(request);
+            int statusCode = response.getStatusLine().getStatusCode();
+            String responseBody = EntityUtils.toString(response.getEntity());
             
             logger.info("POST Response - Status: {}, Body: {}", statusCode, responseBody);
+        } finally {
+            request.releaseConnection();
+        }
+    }
+    
+    private void parseProxyArguments(String[] args) {
+        for (int i = 0; i < args.length; i++) {
+            if ("-proxyHost".equals(args[i]) && i + 1 < args.length) {
+                proxyConfig.setHost(args[i + 1]);
+            } else if ("-proxyPort".equals(args[i]) && i + 1 < args.length) {
+                proxyConfig.setPort(args[i + 1]);
+            } else if ("-proxyUser".equals(args[i]) && i + 1 < args.length) {
+                proxyConfig.setUsername(args[i + 1]);
+            } else if ("-proxyPassword".equals(args[i]) && i + 1 < args.length) {
+                proxyConfig.setPassword(args[i + 1]);
+            }
         }
     }
 }

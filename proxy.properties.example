@@ -1,0 +1,10 @@
+# Proxy configuration file
+# Copy this file to proxy.properties and update with your actual values
+
+# Proxy server settings
+proxy.host=demo-proxy.net
+proxy.port=8085
+
+# Proxy authentication (if required)
+proxy.username=your_username
+proxy.password=your_password

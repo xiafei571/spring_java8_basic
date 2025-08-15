@@ -134,3 +134,6 @@ Desktop.ini
 *.tmp
 *.temp
 .claude
+
+# Proxy configuration (contains sensitive information)
+proxy.properties
