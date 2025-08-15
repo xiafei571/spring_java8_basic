@@ -52,8 +52,8 @@ public class HttpClientFactory {
                 .setConnectTimeout(60000)
                 .setSocketTimeout(120000)
                 .setConnectionRequestTimeout(60000)
-                .setTargetPreferredAuthSchemes(Arrays.asList(AuthSchemes.NTLM, AuthSchemes.BASIC))
-                .setProxyPreferredAuthSchemes(Arrays.asList(AuthSchemes.NTLM, AuthSchemes.BASIC));
+                .setTargetPreferredAuthSchemes(Arrays.asList(AuthSchemes.SPNEGO, AuthSchemes.KERBEROS, AuthSchemes.NTLM, AuthSchemes.BASIC))
+                .setProxyPreferredAuthSchemes(Arrays.asList(AuthSchemes.SPNEGO, AuthSchemes.KERBEROS, AuthSchemes.NTLM, AuthSchemes.BASIC));
         
         // Configure proxy if enabled
         if (proxyConfig.isProxyEnabled()) {
@@ -133,69 +133,69 @@ public class HttpClientFactory {
     }
     
     private CredentialsProvider createCredentialsProvider() {
-        BasicCredentialsProvider credentialsProvider = new BasicCredentialsProvider();
-        String username = proxyConfig.getUsername();
-        String password = proxyConfig.getPassword();
-        String domain = proxyConfig.getDomain();
-        
-        // Extract domain from username if format is domain\username
-        if (domain == null && username.contains("\\")) {
-            String[] parts = username.split("\\\\", 2);
-            domain = parts[0];
-            username = parts[1];
-            logger.info("Extracted domain '{}' from username", domain);
-        }
+        String osName = System.getProperty("os.name", "").toLowerCase();
+        boolean isWindows = osName.contains("windows");
         
         AuthScope proxyAuthScope = new AuthScope(proxyConfig.getHost(), proxyConfig.getPortAsInt());
         
-        // Always try NTLM first for corporate proxies
-        if (domain != null && !domain.trim().isEmpty()) {
+        // Try Windows integrated authentication first (like PSCredential)
+        if (isWindows) {
             try {
-                NTCredentials ntCredentials = new NTCredentials(
-                    username,
-                    password,
-                    getWorkstation(),
-                    domain
+                // Use Windows credentials provider for SPNEGO/Kerberos
+                WindowsCredentialsProvider winCredProvider = new WindowsCredentialsProvider(
+                    new BasicCredentialsProvider()
                 );
-                credentialsProvider.setCredentials(proxyAuthScope, ntCredentials);
-                logger.info("Using NTLM authentication: domain={}, user={}, workstation={}", 
-                           domain, username, getWorkstation());
-                return credentialsProvider;
-            } catch (Exception e) {
-                logger.warn("Failed to create NTLM credentials: {}", e.getMessage());
-            }
-        }
-        
-        // Try to guess domain for corporate environments
-        if (domain == null) {
-            // Common corporate domain patterns
-            String[] commonDomains = {"CORP", "AD", "DOMAIN", "WIN"};
-            for (String testDomain : commonDomains) {
-                try {
+                
+                String username = proxyConfig.getUsername();
+                String password = proxyConfig.getPassword();
+                String domain = proxyConfig.getDomain();
+                
+                // Extract domain from username if format is domain\username
+                if (domain == null && username.contains("\\")) {
+                    String[] parts = username.split("\\\\", 2);
+                    domain = parts[0];
+                    username = parts[1];
+                    logger.info("Extracted domain '{}' from username", domain);
+                }
+                
+                // Configure for all authentication types like PSCredential
+                if (domain != null && !domain.trim().isEmpty()) {
+                    // NTLM credentials for domain authentication
                     NTCredentials ntCredentials = new NTCredentials(
                         username,
                         password,
                         getWorkstation(),
-                        testDomain
+                        domain
                     );
-                    credentialsProvider.setCredentials(proxyAuthScope, ntCredentials);
-                    logger.info("Using NTLM with guessed domain: {}", testDomain);
-                    return credentialsProvider;
-                } catch (Exception e) {
-                    // Continue to next domain
+                    winCredProvider.setCredentials(proxyAuthScope, ntCredentials);
+                    logger.info("Windows integrated auth configured: domain={}, user={}, workstation={}", 
+                               domain, username, getWorkstation());
+                } else {
+                    // Basic credentials for non-domain
+                    UsernamePasswordCredentials basicCredentials = new UsernamePasswordCredentials(
+                        username, password
+                    );
+                    winCredProvider.setCredentials(proxyAuthScope, basicCredentials);
+                    logger.info("Windows integrated auth configured: user={} (no domain)", username);
                 }
+                
+                return winCredProvider;
+                
+            } catch (Exception e) {
+                logger.warn("Failed to configure Windows integrated authentication: {}", e.getMessage());
             }
         }
         
         // Fallback to basic authentication
+        BasicCredentialsProvider basicProvider = new BasicCredentialsProvider();
         UsernamePasswordCredentials basicCredentials = new UsernamePasswordCredentials(
             proxyConfig.getUsername(), 
             proxyConfig.getPassword()
         );
-        credentialsProvider.setCredentials(proxyAuthScope, basicCredentials);
+        basicProvider.setCredentials(proxyAuthScope, basicCredentials);
         logger.info("Using basic authentication fallback for user: {}", proxyConfig.getUsername());
         
-        return credentialsProvider;
+        return basicProvider;
     }
     
     private boolean isWindowsIntegratedAuth() {
