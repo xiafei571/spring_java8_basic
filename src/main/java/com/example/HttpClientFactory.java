@@ -36,11 +36,9 @@ import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.AuthState;
 import org.apache.http.auth.Credentials;
 import org.apache.http.client.CredentialsProvider;
-import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.impl.auth.BasicScheme;
 import org.apache.http.protocol.HttpContext;
-import org.apache.http.protocol.HttpCoreContext;
 
 @Component
 public class HttpClientFactory {
@@ -235,7 +233,7 @@ public class HttpClientFactory {
      * Preemptive Basic authentication interceptor 
      * Forces Basic auth without negotiation like PowerShell
      */
-    private static class PreemptiveBasicAuthInterceptor implements HttpRequestInterceptor {
+    private class PreemptiveBasicAuthInterceptor implements HttpRequestInterceptor {
         @Override
         public void process(HttpRequest request, HttpContext context) throws HttpException, IOException {
             AuthState proxyAuthState = (AuthState) context.getAttribute(HttpClientContext.PROXY_AUTH_STATE);
@@ -243,21 +241,16 @@ public class HttpClientFactory {
             if (proxyAuthState != null && proxyAuthState.getAuthScheme() == null) {
                 CredentialsProvider credentialsProvider = (CredentialsProvider) context.getAttribute(HttpClientContext.CREDS_PROVIDER);
                 
-                if (credentialsProvider != null) {
-                    // Get proxy from request config instead
-                    Object requestConfigObj = context.getAttribute(HttpClientContext.REQUEST_CONFIG);
-                    if (requestConfigObj instanceof RequestConfig) {
-                        RequestConfig requestConfig = (RequestConfig) requestConfigObj;
-                        HttpHost proxy = requestConfig.getProxy();
-                        
-                        if (proxy != null) {
-                            Credentials credentials = credentialsProvider.getCredentials(new AuthScope(proxy));
-                            if (credentials != null) {
-                                // Force Basic scheme - no negotiation
-                                BasicScheme basicScheme = new BasicScheme();
-                                proxyAuthState.update(basicScheme, credentials);
-                            }
-                        }
+                if (credentialsProvider != null && proxyConfig.isProxyEnabled()) {
+                    // Use our known proxy configuration
+                    HttpHost proxy = new HttpHost(proxyConfig.getHost(), proxyConfig.getPortAsInt(), "http");
+                    Credentials credentials = credentialsProvider.getCredentials(new AuthScope(proxy));
+                    
+                    if (credentials != null) {
+                        // Force Basic scheme - no negotiation
+                        BasicScheme basicScheme = new BasicScheme();
+                        proxyAuthState.update(basicScheme, credentials);
+                        logger.debug("Forced Basic authentication for proxy: {}", proxy.toHostString());
                     }
                 }
             }
