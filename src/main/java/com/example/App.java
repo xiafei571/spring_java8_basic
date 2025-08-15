@@ -121,7 +121,15 @@ public class App implements CommandLineRunner {
     private void parseProxyArguments(String[] args) {
         for (int i = 0; i < args.length; i++) {
             if ("-proxyHost".equals(args[i]) && i + 1 < args.length) {
-                proxyConfig.setHost(args[i + 1]);
+                String host = args[i + 1];
+                // Clean up hostname - remove http:// or https:// prefix if present
+                if (host.startsWith("http://")) {
+                    host = host.substring(7);
+                } else if (host.startsWith("https://")) {
+                    host = host.substring(8);
+                }
+                proxyConfig.setHost(host);
+                logger.info("Proxy host set to: {}", host);
             } else if ("-proxyPort".equals(args[i]) && i + 1 < args.length) {
                 proxyConfig.setPort(args[i + 1]);
             } else if ("-proxyUser".equals(args[i]) && i + 1 < args.length) {

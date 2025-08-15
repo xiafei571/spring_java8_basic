@@ -40,6 +40,14 @@ public class ProxyConfig {
     }
 
     public void setHost(String host) {
+        if (host != null) {
+            // Clean up hostname - remove http:// or https:// prefix if present
+            if (host.startsWith("http://")) {
+                host = host.substring(7);
+            } else if (host.startsWith("https://")) {
+                host = host.substring(8);
+            }
+        }
         this.host = host;
     }
 
