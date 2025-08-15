@@ -36,6 +36,7 @@ import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.AuthState;
 import org.apache.http.auth.Credentials;
 import org.apache.http.client.CredentialsProvider;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.impl.auth.BasicScheme;
 import org.apache.http.protocol.HttpContext;
@@ -243,17 +244,19 @@ public class HttpClientFactory {
                 CredentialsProvider credentialsProvider = (CredentialsProvider) context.getAttribute(HttpClientContext.CREDS_PROVIDER);
                 
                 if (credentialsProvider != null) {
-                    // Force Basic scheme - no negotiation
-                    BasicScheme basicScheme = new BasicScheme();
-                    proxyAuthState.update(basicScheme, null);
-                    
-                    // Get proxy from request config
-                    Object proxyObj = context.getAttribute(HttpCoreContext.HTTP_PROXY_HOST);
-                    if (proxyObj instanceof HttpHost) {
-                        HttpHost proxy = (HttpHost) proxyObj;
-                        Credentials credentials = credentialsProvider.getCredentials(new AuthScope(proxy));
-                        if (credentials != null) {
-                            proxyAuthState.update(basicScheme, credentials);
+                    // Get proxy from request config instead
+                    Object requestConfigObj = context.getAttribute(HttpClientContext.REQUEST_CONFIG);
+                    if (requestConfigObj instanceof RequestConfig) {
+                        RequestConfig requestConfig = (RequestConfig) requestConfigObj;
+                        HttpHost proxy = requestConfig.getProxy();
+                        
+                        if (proxy != null) {
+                            Credentials credentials = credentialsProvider.getCredentials(new AuthScope(proxy));
+                            if (credentials != null) {
+                                // Force Basic scheme - no negotiation
+                                BasicScheme basicScheme = new BasicScheme();
+                                proxyAuthState.update(basicScheme, credentials);
+                            }
                         }
                     }
                 }
