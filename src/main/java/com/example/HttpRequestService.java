@@ -197,4 +197,61 @@ public class HttpRequestService {
             }
         };
     }
+    
+    public static String callWithHttpURLConnection(String proxyHost, int proxyPort, String proxyUser, String proxyPassword) {
+        try {
+            Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost, proxyPort));
+            URL url = new URL("https://www.google.com");
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection(proxy);
+            
+            if (connection instanceof HttpsURLConnection) {
+                HttpsURLConnection httpsConnection = (HttpsURLConnection) connection;
+                
+                TrustManager[] trustAllCerts = new TrustManager[] {
+                    new X509TrustManager() {
+                        public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+                        public void checkClientTrusted(X509Certificate[] certs, String authType) { }
+                        public void checkServerTrusted(X509Certificate[] certs, String authType) { }
+                    }
+                };
+                
+                SSLContext sc = SSLContext.getInstance("TLS");
+                sc.init(null, trustAllCerts, new java.security.SecureRandom());
+                httpsConnection.setSSLSocketFactory(sc.getSocketFactory());
+                httpsConnection.setHostnameVerifier(new HostnameVerifier() {
+                    public boolean verify(String hostname, SSLSession session) { return true; }
+                });
+            }
+            
+            connection.setRequestMethod("GET");
+            connection.setRequestProperty("User-Agent", "Java/HttpURLConnection");
+            
+            if (proxyUser != null && proxyPassword != null) {
+                String credentials = proxyUser + ":" + proxyPassword;
+                String encoded = Base64.getEncoder().encodeToString(credentials.getBytes("UTF-8"));
+                connection.setRequestProperty("Proxy-Authorization", "Basic " + encoded);
+            }
+            
+            connection.setConnectTimeout(30000);
+            connection.setReadTimeout(30000);
+            
+            int responseCode = connection.getResponseCode();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(
+                responseCode >= 200 && responseCode < 300 ? 
+                connection.getInputStream() : connection.getErrorStream()));
+            
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                response.append(line).append("\n");
+            }
+            reader.close();
+            connection.disconnect();
+            
+            return "Response Code: " + responseCode + "\n" + response.toString();
+            
+        } catch (Exception e) {
+            return "Error: " + e.getMessage();
+        }
+    }
 }

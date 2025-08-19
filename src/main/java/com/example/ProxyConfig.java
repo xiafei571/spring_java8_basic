@@ -3,10 +3,6 @@ package com.example;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.util.Properties;
-
 @Component
 @ConfigurationProperties(prefix = "app.proxy")
 public class ProxyConfig {
@@ -18,23 +14,7 @@ public class ProxyConfig {
     private String domain;
 
     public ProxyConfig() {
-        // Skip file loading - use command line arguments only
-        // loadFromFile();
-    }
-
-    private void loadFromFile() {
-        Properties props = new Properties();
-        try (FileInputStream fis = new FileInputStream("proxy.properties")) {
-            props.load(fis);
-            // Only override if not already set from command line
-            if (this.host == null) this.host = props.getProperty("proxy.host");
-            if (this.port == null) this.port = props.getProperty("proxy.port");
-            if (this.username == null) this.username = props.getProperty("proxy.username");
-            if (this.password == null) this.password = props.getProperty("proxy.password");
-            if (this.domain == null) this.domain = props.getProperty("proxy.domain");
-        } catch (IOException e) {
-            // File doesn't exist or can't be read, keep existing values
-        }
+        // Configuration will be automatically injected by Spring from application.properties
     }
 
     public String getHost() {
@@ -75,8 +55,6 @@ public class ProxyConfig {
 
     public void setPassword(String password) {
         this.password = password;
-        // Debug logging - length only for security
-        System.out.println("DEBUG: Password set (length: " + (password != null ? password.length() : 0) + ")");
     }
 
     public boolean isProxyEnabled() {
@@ -103,5 +81,29 @@ public class ProxyConfig {
         } catch (NumberFormatException e) {
             return 8080; // default port
         }
+    }
+    
+    public boolean isEmpty(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+    
+    public boolean isHostEmpty() {
+        return isEmpty(host);
+    }
+    
+    public boolean isPortEmpty() {
+        return isEmpty(port);
+    }
+    
+    public boolean isUsernameEmpty() {
+        return isEmpty(username);
+    }
+    
+    public boolean isPasswordEmpty() {
+        return isEmpty(password);
+    }
+    
+    public boolean isDomainEmpty() {
+        return isEmpty(domain);
     }
 }

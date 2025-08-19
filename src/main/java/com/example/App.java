@@ -55,14 +55,23 @@ public class App implements CommandLineRunner {
         // Log all command line arguments
         logger.info("Command line arguments: {}", Arrays.toString(args));
         
+        // Check if user wants to use the minimal HttpURLConnection example
+        boolean useMinimalExample = hasArgument(args, "-useMinimal");
+        
         try {
-            // Perform GET request
-            httpRequestService.performGetRequest(getUrl);
-            
-            // Perform POST request
-            Map<String, String> payload = new HashMap<>();
-            payload.put("ping", "hello-from-cli");
-            httpRequestService.performPostRequest(postUrl, payload);
+            if (useMinimalExample) {
+                logger.info("Using minimal HttpURLConnection example");
+                testMinimalHttpURLConnection();
+            } else {
+                logger.info("Using original HTTP request methods");
+                // Perform GET request
+                httpRequestService.performGetRequest(getUrl);
+                
+                // Perform POST request
+                Map<String, String> payload = new HashMap<>();
+                payload.put("ping", "hello-from-cli");
+                httpRequestService.performPostRequest(postUrl, payload);
+            }
             
             logger.info("All HTTP requests completed successfully");
             
@@ -73,7 +82,31 @@ public class App implements CommandLineRunner {
             System.exit(0);
         }
     }
-
     
+    private boolean hasArgument(String[] args, String argument) {
+        for (String arg : args) {
+            if (argument.equals(arg)) {
+                return true;
+            }
+        }
+        return false;
+    }
     
+    private void testMinimalHttpURLConnection() {
+        logger.info("Testing minimal HttpURLConnection to https://www.google.com");
+        
+        if (!proxyConfig.isProxyEnabled()) {
+            logger.warn("No proxy configuration found. Please provide proxy settings via command line arguments.");
+            return;
+        }
+        
+        String result = HttpRequestService.callWithHttpURLConnection(
+            proxyConfig.getHost(),
+            proxyConfig.getPortAsInt(),
+            proxyConfig.getUsername(),
+            proxyConfig.getPassword()
+        );
+        
+        logger.info("Minimal HttpURLConnection result:\n{}", result);
+    }
 }
