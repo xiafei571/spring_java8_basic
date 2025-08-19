@@ -1,13 +1,5 @@
 package com.example;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.http.HttpEntity;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,15 +8,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.*;
-import java.security.cert.X509Certificate;
 import java.util.Arrays;
-import java.util.Base64;
-import javax.net.ssl.*;
-import javax.security.cert.CertificateException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -42,27 +26,19 @@ public class App implements CommandLineRunner {
     @Autowired
     private HttpClientFactory httpClientFactory;
     
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    @Autowired
+    private HttpRequestService httpRequestService;
+    
+    @Autowired
+    private ProxyArgumentParser proxyArgumentParser;
+    
+    @Autowired
+    private NetworkConfigurationService networkConfigurationService;
     
     @Autowired
     private ProxyConfig proxyConfig;
 
     public static void main(String[] args) {
-        // CRITICAL: Disable SOCKS before ANYTHING else
-        System.setProperty("java.net.useSystemProxies", "false");
-        System.clearProperty("socksProxyHost");
-        System.clearProperty("socksProxyPort");
-        System.clearProperty("socksProxyVersion");
-        System.setProperty("socksProxyHost", "");
-        System.setProperty("socksProxyPort", "");
-        
-        // Force Basic authentication only - disable all integrated auth
-        System.setProperty("sun.net.http.allowRestrictedHeaders", "true");
-        System.setProperty("javax.security.auth.useSubjectCredsOnly", "false");
-        System.setProperty("java.security.krb5.conf", "");
-        System.setProperty("java.security.auth.login.config", "");
-        System.setProperty("sun.security.spnego.debug", "false");
-        
         SpringApplication.run(App.class, args);
     }
 
@@ -71,22 +47,22 @@ public class App implements CommandLineRunner {
         logger.info("Starting CLI application");
         
         // Parse command line arguments for proxy settings
-        parseProxyArguments(args);
+        proxyArgumentParser.parseProxyArguments(args);
         
-        // Authentication configured via command line arguments
-        
-        // Configure DNS settings to resolve proxy hostname
-        configureDNS();
+        // Configure network settings
+        networkConfigurationService.configureNetworkSettings();
         
         // Log all command line arguments
         logger.info("Command line arguments: {}", Arrays.toString(args));
         
-        try (CloseableHttpClient httpClient = httpClientFactory.createHttpClient()) {
+        try {
             // Perform GET request
-            performGetRequest(httpClient);
+            httpRequestService.performGetRequest(getUrl);
             
             // Perform POST request
-            performPostRequest(httpClient);
+            Map<String, String> payload = new HashMap<>();
+            payload.put("ping", "hello-from-cli");
+            httpRequestService.performPostRequest(postUrl, payload);
             
             logger.info("All HTTP requests completed successfully");
             
@@ -98,352 +74,6 @@ public class App implements CommandLineRunner {
         }
     }
 
-    private void performGetRequest(CloseableHttpClient httpClient) throws IOException {
-        logger.info("Performing GET request to: {}", getUrl);
-        
-        // Use raw HTTP connection instead of HttpClient
-        performRawHttpRequest(getUrl);
-    }
     
-    private void performRawHttpRequest(String urlString) throws IOException {
-        try {
-            // Configure SSL to trust all certificates (like PowerShell often does)
-            configureSSLTrustAll();
-            
-            // Create Basic auth header
-            String credentials = proxyConfig.getUsername() + ":" + proxyConfig.getPassword();
-            String authHeaderValue = "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes());
-            
-            // Create proxy
-            Proxy proxy = new Proxy(Proxy.Type.HTTP, 
-                new InetSocketAddress(proxyConfig.getHost(), proxyConfig.getPortAsInt()));
-            
-            // Create connection
-            URL url = new URL(urlString);
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection(proxy);
-            
-            // Configure SSL for HTTPS connections
-            if (connection instanceof HttpsURLConnection) {
-                HttpsURLConnection httpsConnection = (HttpsURLConnection) connection;
-                httpsConnection.setSSLSocketFactory(getTrustAllSSLSocketFactory());
-                httpsConnection.setHostnameVerifier(getTrustAllHostnameVerifier());
-            }
-            
-            // Set headers like PowerShell
-            connection.setRequestMethod("GET");
-            connection.setRequestProperty("User-Agent", "Java-PowerShell-Compatible/1.0");
-            connection.setRequestProperty("Accept", "application/json");
-            connection.setRequestProperty("Proxy-Authorization", authHeaderValue);
-            
-            // Set timeouts
-            connection.setConnectTimeout(60000);
-            connection.setReadTimeout(60000);
-            
-            // Make request
-            int responseCode = connection.getResponseCode();
-            String responseMessage = connection.getResponseMessage();
-            
-            logger.info("Raw HTTP Response - Code: {}, Message: {}", responseCode, responseMessage);
-            
-            // Read response
-            BufferedReader reader;
-            if (responseCode >= 200 && responseCode < 300) {
-                reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-            } else {
-                reader = new BufferedReader(new InputStreamReader(connection.getErrorStream()));
-            }
-            
-            StringBuilder response = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                response.append(line).append("\n");
-            }
-            reader.close();
-            
-            logger.info("Raw HTTP Response Body: {}", response.toString());
-            
-        } catch (Exception e) {
-            logger.error("Raw HTTP request failed: {}", e.getMessage(), e);
-        }
-    }
-
-    private void performPostRequest(CloseableHttpClient httpClient) throws IOException {
-        logger.info("Performing POST request to: {}", postUrl);
-        
-        // Use raw HTTP connection for POST too
-        Map<String, String> payload = new HashMap<>();
-        payload.put("ping", "hello-from-cli");
-        String jsonPayload = objectMapper.writeValueAsString(payload);
-        
-        performRawHttpPostRequest(postUrl, jsonPayload);
-    }
-    
-    private void performRawHttpPostRequest(String urlString, String jsonPayload) throws IOException {
-        try {
-            // Configure SSL to trust all certificates
-            configureSSLTrustAll();
-            
-            // Create Basic auth header
-            String credentials = proxyConfig.getUsername() + ":" + proxyConfig.getPassword();
-            String authHeaderValue = "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes());
-            
-            // Create proxy
-            Proxy proxy = new Proxy(Proxy.Type.HTTP, 
-                new InetSocketAddress(proxyConfig.getHost(), proxyConfig.getPortAsInt()));
-            
-            // Create connection
-            URL url = new URL(urlString);
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection(proxy);
-            
-            // Configure SSL for HTTPS connections
-            if (connection instanceof HttpsURLConnection) {
-                HttpsURLConnection httpsConnection = (HttpsURLConnection) connection;
-                httpsConnection.setSSLSocketFactory(getTrustAllSSLSocketFactory());
-                httpsConnection.setHostnameVerifier(getTrustAllHostnameVerifier());
-            }
-            
-            // Set headers for POST
-            connection.setRequestMethod("POST");
-            connection.setRequestProperty("User-Agent", "Java-PowerShell-Compatible/1.0");
-            connection.setRequestProperty("Accept", "application/json");
-            connection.setRequestProperty("Content-Type", "application/json");
-            connection.setRequestProperty("Proxy-Authorization", authHeaderValue);
-            connection.setDoOutput(true);
-            
-            // Set timeouts
-            connection.setConnectTimeout(60000);
-            connection.setReadTimeout(60000);
-            
-            // Write request body
-            connection.getOutputStream().write(jsonPayload.getBytes("UTF-8"));
-            connection.getOutputStream().flush();
-            connection.getOutputStream().close();
-            
-            // Get response
-            int responseCode = connection.getResponseCode();
-            String responseMessage = connection.getResponseMessage();
-            
-            logger.info("Raw HTTP POST Response - Code: {}, Message: {}", responseCode, responseMessage);
-            
-            // Read response
-            BufferedReader reader;
-            if (responseCode >= 200 && responseCode < 300) {
-                reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-            } else {
-                reader = new BufferedReader(new InputStreamReader(connection.getErrorStream()));
-            }
-            
-            StringBuilder response = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                response.append(line).append("\n");
-            }
-            reader.close();
-            
-            logger.info("Raw HTTP POST Response Body: {}", response.toString());
-            
-        } catch (Exception e) {
-            logger.error("Raw HTTP POST request failed: {}", e.getMessage(), e);
-        }
-    }
-    
-    private void parseProxyArguments(String[] args) {
-        for (int i = 0; i < args.length; i++) {
-            if ("-proxyHost".equals(args[i]) && i + 1 < args.length) {
-                String host = args[i + 1];
-                // Clean up hostname - remove http:// or https:// prefix if present
-                if (host.startsWith("http://")) {
-                    host = host.substring(7);
-                } else if (host.startsWith("https://")) {
-                    host = host.substring(8);
-                }
-                proxyConfig.setHost(host);
-                logger.info("Proxy host set to: {}", host);
-            } else if ("-proxyPort".equals(args[i]) && i + 1 < args.length) {
-                proxyConfig.setPort(args[i + 1]);
-            } else if ("-proxyUser".equals(args[i]) && i + 1 < args.length) {
-                String user = args[i + 1];
-                proxyConfig.setUsername(user);
-                logger.info("Proxy user set to: {}", user);
-            } else if ("-proxyPassword".equals(args[i]) && i + 1 < args.length) {
-                String pass = args[i + 1];
-                proxyConfig.setPassword(pass);
-                logger.info("Proxy password set (length: {})", pass != null ? pass.length() : 0);
-            } else if ("-proxyDomain".equals(args[i]) && i + 1 < args.length) {
-                proxyConfig.setDomain(args[i + 1]);
-            }
-        }
-    }
-    
-    private void configureDNS() {
-        // CRITICAL: Completely disable ALL system proxy detection
-        System.setProperty("java.net.useSystemProxies", "false");
-        
-        // CRITICAL: Explicitly clear ALL SOCKS proxy settings
-        System.clearProperty("socksProxyHost");
-        System.clearProperty("socksProxyPort");
-        System.clearProperty("socksProxyVersion");
-        System.clearProperty("socksNonProxyHosts");
-        
-        // Additional SOCKS cleanup
-        System.setProperty("socksProxyHost", "");
-        System.setProperty("socksProxyPort", "");
-        System.setProperty("socksProxyVersion", "");
-        System.setProperty("socksNonProxyHosts", "");
-        
-        // Network settings
-        System.setProperty("networkaddress.cache.ttl", "0");
-        System.setProperty("networkaddress.cache.negative.ttl", "0");
-        System.setProperty("java.net.preferIPv4Stack", "true");
-        System.setProperty("java.net.preferIPv6Addresses", "false");
-        
-        // DNS settings
-        System.setProperty("sun.net.spi.nameservice.nameservers", "");
-        System.setProperty("sun.net.spi.nameservice.provider.1", "dns,sun");
-        
-        logger.info("Java network configuration set (system proxies disabled)");
-        
-        // If proxy is configured, try to resolve the hostname first
-        if (proxyConfig.isProxyEnabled()) {
-            try {
-                InetAddress addr = InetAddress.getByName(proxyConfig.getHost());
-                logger.info("Successfully resolved proxy hostname: {} -> {}", 
-                           proxyConfig.getHost(), addr.getHostAddress());
-            } catch (UnknownHostException e) {
-                logger.warn("Failed to resolve proxy hostname: {}. Error: {}", 
-                           proxyConfig.getHost(), e.getMessage());
-                logger.info("Trying alternative DNS resolution methods...");
-                
-                // Try alternative resolution methods
-                tryAlternativeDNSResolution(proxyConfig.getHost());
-            }
-        }
-    }
-    
-    private void tryAlternativeDNSResolution(String hostname) {
-        try {
-            // Try using system DNS directly
-            Process process = Runtime.getRuntime().exec("nslookup " + hostname);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.contains("Address:") && !line.contains("#53")) {
-                    String ipAddress = line.split("Address:")[1].trim();
-                    logger.info("System nslookup found IP: {} -> {}", hostname, ipAddress);
-                    logger.info("Consider using this IP address instead of hostname");
-                    break;
-                }
-            }
-            
-            process.waitFor();
-        } catch (Exception e) {
-            logger.warn("Alternative DNS resolution failed: {}", e.getMessage());
-        }
-    }
-    
-    /**
-     * Add preemptive proxy authorization header to avoid 407 challenge
-     * This mimics PowerShell's ProxyCredential behavior
-     */
-    private void addProxyAuthHeader(org.apache.http.HttpMessage request) {
-        if (proxyConfig.hasCredentials()) {
-            try {
-                String username = proxyConfig.getUsername();
-                String password = proxyConfig.getPassword();
-                
-                logger.info("Creating auth header for user: {}", username);
-                logger.info("Password available: {}, length: {}", password != null, password != null ? password.length() : 0);
-                
-                // Test hasCredentials again
-                logger.info("hasCredentials() returns: {}", proxyConfig.hasCredentials());
-                
-                if (username == null || password == null) {
-                    logger.error("Cannot create auth header - username or password is null");
-                    return;
-                }
-                
-                // Handle domain\username format
-                if (username.contains("\\")) {
-                    logger.info("Using domain\\username format: {}", username);
-                } else {
-                    logger.info("Using plain username: {}", username);
-                }
-                
-                String credentials = username + ":" + (password != null ? password : "");
-                logger.info("DEBUG: Creating credentials with username='{}', password length={}", username, password != null ? password.length() : 0);
-                String encoded = Base64.getEncoder().encodeToString(credentials.getBytes("UTF-8"));
-                String authHeader = "Basic " + encoded;
-                
-                request.setHeader("Proxy-Authorization", authHeader);
-                
-                logger.info("Successfully added Proxy-Authorization header for user: {}", username);
-                logger.info("Credentials format: {}:*** (total length: {})", username, credentials.length());
-                logger.info("Auth header: Proxy-Authorization: {}", authHeader.substring(0, Math.min(25, authHeader.length())) + "...");
-                
-            } catch (Exception e) {
-                logger.error("Failed to create proxy authorization header: {}", e.getMessage(), e);
-            }
-        } else {
-            logger.warn("No credentials available - cannot add Proxy-Authorization header");
-        }
-    }
-    
-    /**
-     * Configure SSL to trust all certificates (like PowerShell often does in corporate environments)
-     */
-    private void configureSSLTrustAll() {
-        try {
-            // Create trust manager that accepts all certificates
-            TrustManager[] trustAllCerts = new TrustManager[] {
-                new X509TrustManager() {
-                    public X509Certificate[] getAcceptedIssuers() { return null; }
-                    public void checkClientTrusted(X509Certificate[] certs, String authType) { }
-                    public void checkServerTrusted(X509Certificate[] certs, String authType) { }
-                }
-            };
-            
-            // Install the all-trusting trust manager
-            SSLContext sc = SSLContext.getInstance("SSL");
-            sc.init(null, trustAllCerts, new java.security.SecureRandom());
-            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
-            
-            // Create hostname verifier that accepts all hostnames
-            HostnameVerifier allHostsValid = new HostnameVerifier() {
-                public boolean verify(String hostname, SSLSession session) { return true; }
-            };
-            HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid);
-            
-        } catch (Exception e) {
-            logger.warn("Failed to configure SSL trust all: {}", e.getMessage());
-        }
-    }
-    
-    private SSLSocketFactory getTrustAllSSLSocketFactory() {
-        try {
-            TrustManager[] trustAllCerts = new TrustManager[] {
-                new X509TrustManager() {
-                    public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
-                    public void checkClientTrusted(X509Certificate[] certs, String authType) { }
-                    public void checkServerTrusted(X509Certificate[] certs, String authType) { }
-                }
-            };
-            
-            SSLContext sc = SSLContext.getInstance("SSL");
-            sc.init(null, trustAllCerts, new java.security.SecureRandom());
-            return sc.getSocketFactory();
-        } catch (Exception e) {
-            logger.warn("Failed to create trust-all SSL socket factory: {}", e.getMessage());
-            return null;
-        }
-    }
-    
-    private HostnameVerifier getTrustAllHostnameVerifier() {
-        return new HostnameVerifier() {
-            public boolean verify(String hostname, SSLSession session) { 
-                return true; 
-            }
-        };
-    }
     
 }
