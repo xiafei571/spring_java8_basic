@@ -110,7 +110,7 @@ public class App implements CommandLineRunner {
         CloseableHttpResponse response = null;
         
         try {
-            // Extract domain from username if in DOMAIN\username format
+            // Extract domain from username if in DOMAIN\\username format
             String actualUsername = username;
             String actualDomain = domain;
             
@@ -170,7 +170,9 @@ public class App implements CommandLineRunner {
             return "Response Code: " + statusCode + "\n" + responseBody;
             
         } catch (Exception e) {
-            return "Error: " + e.getMessage();
+            logger.error("Error in callWithHttpClientNTLM", e);
+            return "Error: " + e.getClass().getSimpleName() + ": " + e.getMessage() + 
+                   "\nFull stack trace logged to console";
         } finally {
             // Clean up resources
             try {
