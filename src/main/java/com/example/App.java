@@ -45,8 +45,8 @@ public class App implements CommandLineRunner {
         // Force Basic authentication only - disable all integrated auth
         System.setProperty("sun.net.http.allowRestrictedHeaders", "true");
         System.setProperty("javax.security.auth.useSubjectCredsOnly", "false");
-        System.setProperty("java.security.krb5.conf", "");
-        System.setProperty("java.security.auth.login.config", "");
+        System.clearProperty("java.security.krb5.conf");
+        System.clearProperty("java.security.auth.login.config");
         System.setProperty("sun.security.spnego.debug", "false");
         
         SpringApplication.run(App.class, args);
