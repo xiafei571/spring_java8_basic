@@ -19,6 +19,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.Arrays;
 
 @SpringBootApplication
@@ -33,6 +34,21 @@ public class App implements CommandLineRunner {
     private ProxyConfig proxyConfig;
 
     public static void main(String[] args) {
+        // CRITICAL: Disable SOCKS before ANYTHING else
+        System.setProperty("java.net.useSystemProxies", "false");
+        System.clearProperty("socksProxyHost");
+        System.clearProperty("socksProxyPort");
+        System.clearProperty("socksProxyVersion");
+        System.setProperty("socksProxyHost", "");
+        System.setProperty("socksProxyPort", "");
+        
+        // Force Basic authentication only - disable all integrated auth
+        System.setProperty("sun.net.http.allowRestrictedHeaders", "true");
+        System.setProperty("javax.security.auth.useSubjectCredsOnly", "false");
+        System.setProperty("java.security.krb5.conf", "");
+        System.setProperty("java.security.auth.login.config", "");
+        System.setProperty("sun.security.spnego.debug", "false");
+        
         SpringApplication.run(App.class, args);
     }
 
@@ -42,6 +58,9 @@ public class App implements CommandLineRunner {
         
         // Parse command line arguments for proxy settings
         proxyArgumentParser.parseProxyArguments(args);
+        
+        // Configure DNS settings to resolve proxy hostname
+        configureDNS();
         
         // Log all command line arguments
         logger.info("Command line arguments: {}", Arrays.toString(args));
@@ -68,7 +87,7 @@ public class App implements CommandLineRunner {
             return;
         }
         
-        String result = callWithHttpClientNTLM(
+        String result = testInternetProxyAccess(
             proxyConfig.getHost(),
             proxyConfig.getPortAsInt(),
             proxyConfig.getUsername(),
@@ -77,6 +96,13 @@ public class App implements CommandLineRunner {
         );
         
         logger.info("Apache HttpClient NTLM result:\n{}", result);
+    }
+    
+    public static String testInternetProxyAccess(String proxyHost, int proxyPort, String username, String password, String domain) {
+        logger.info("Testing internet proxy access - equivalent to: curl --proxy-ntlm --proxy-user '{}:***' --proxy 'http://{}:{}' 'https://www.google.com'", 
+                   username, proxyHost, proxyPort);
+        
+        return callWithHttpClientNTLM(proxyHost, proxyPort, username, password, domain);
     }
     
     public static String callWithHttpClientNTLM(String proxyHost, int proxyPort, String username, String password, String domain) {
@@ -156,6 +182,48 @@ public class App implements CommandLineRunner {
                 }
             } catch (Exception e) {
                 // Ignore cleanup errors
+            }
+        }
+    }
+    
+    private void configureDNS() {
+        // CRITICAL: Completely disable ALL system proxy detection
+        System.setProperty("java.net.useSystemProxies", "false");
+        
+        // CRITICAL: Explicitly clear ALL SOCKS proxy settings
+        System.clearProperty("socksProxyHost");
+        System.clearProperty("socksProxyPort");
+        System.clearProperty("socksProxyVersion");
+        System.clearProperty("socksNonProxyHosts");
+        
+        // Additional SOCKS cleanup
+        System.setProperty("socksProxyHost", "");
+        System.setProperty("socksProxyPort", "");
+        System.setProperty("socksProxyVersion", "");
+        System.setProperty("socksNonProxyHosts", "");
+        
+        // Network settings
+        System.setProperty("networkaddress.cache.ttl", "0");
+        System.setProperty("networkaddress.cache.negative.ttl", "0");
+        System.setProperty("java.net.preferIPv4Stack", "true");
+        System.setProperty("java.net.preferIPv6Addresses", "false");
+        
+        // DNS settings
+        System.setProperty("sun.net.spi.nameservice.nameservers", "");
+        System.setProperty("sun.net.spi.nameservice.provider.1", "dns,sun");
+        
+        logger.info("Java network configuration set (system proxies disabled)");
+        
+        // If proxy is configured, try to resolve the hostname first
+        if (proxyConfig.isProxyEnabled()) {
+            try {
+                InetAddress addr = InetAddress.getByName(proxyConfig.getHost());
+                logger.info("Successfully resolved proxy hostname: {} -> {}", 
+                           proxyConfig.getHost(), addr.getHostAddress());
+            } catch (UnknownHostException e) {
+                logger.warn("Failed to resolve proxy hostname: {}. Error: {}", 
+                           proxyConfig.getHost(), e.getMessage());
+                logger.info("Will proceed anyway - HttpClient may still be able to resolve it");
             }
         }
     }
